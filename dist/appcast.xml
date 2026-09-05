@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Канал обновлений Nexus Nimbus (WinSparkle / auto_updater).
+
+  Приложение читает этот файл, сравнивает sparkle:version с установленной
+  версией и, если она новее, скачивает установщик, ПРОВЕРЯЕТ ЕГО ПОДПИСЬ
+  открытым ключом из dsa_pub.pem (зашит в exe через windows/runner/Runner.rc)
+  и запускает.
+
+  Откуда берётся адрес канала — UpdaterService.effectiveFeedUrl, по убыванию
+  приоритета:
+    1. переменная окружения NIMBUS_UPDATE_FEED — для проверки перед выкладкой;
+    2. свой сервер из настроек приложения (домашняя станция);
+    3. этот файл на GitHub — канал по умолчанию.
+
+  Репозиторий обязан быть ПУБЛИЧНЫМ: raw.githubusercontent отдаёт файл без
+  токена, а авторизоваться WinSparkle не умеет.
+
+  Как выпустить версию — dist/README.md. Коротко: dist\release.ps1 -Version X.Y.Z
+  соберёт, подпишет и впишет запись сюда, дальше dist\publish-to-github.ps1.
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:nimbus="https://github.com/kekw2077/nexus-nimbus"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Nexus Nimbus</title>
+    <link>https://raw.githubusercontent.com/kekw2077/nexus-nimbus/main/dist/appcast.xml</link>
+    <description>Обновления Nexus Nimbus для Windows</description>
+    <language>ru</language>
+
+    <!-- НОВЫЕ ЗАПИСИ ДОБАВЛЯЮТСЯ СВЕРХУ. Строку-метку ниже ищет release.ps1,
+         чтобы вставить очередной выпуск — не удалять её. -->
+    <!-- NIMBUS:NEXT-RELEASE -->
+  </channel>
+</rss>
