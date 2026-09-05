@@ -8,6 +8,7 @@ import 'package:http/io_client.dart';
 import 'package:xml/xml.dart';
 
 import '../core/models/remote_file.dart';
+import '../core/models/trash_item.dart';
 
 /// Ошибка обращения к серверу с человеческим текстом — её показываем в UI,
 /// а не голый статус-код.
@@ -128,6 +129,20 @@ class WebDavClient {
           'remote.php',
           'dav',
           'uploads',
+          account.loginName,
+          ...tail,
+        ],
+      );
+
+  /// Корзина сервера: /remote.php/dav/trashbin/{user}/…
+  /// Внутри две «папки»: trash со всем удалённым и виртуальная restore,
+  /// перемещение в которую возвращает файл на исходное место.
+  Uri trashUri(List<String> tail) => account.baseUrl.replace(
+        pathSegments: [
+          ..._basePrefix,
+          'remote.php',
+          'dav',
+          'trashbin',
           account.loginName,
           ...tail,
         ],
@@ -375,6 +390,130 @@ class WebDavClient {
       } catch (_) {}
       rethrow;
     }
+  }
+
+  // -------------------------------------------------------------- корзина
+
+  static const _trashBody = '<?xml version="1.0" encoding="UTF-8"?>'
+      '<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" '
+      'xmlns:nc="http://nextcloud.org/ns"><d:prop>'
+      '<d:getcontentlength/><d:getcontenttype/><d:resourcetype/>'
+      '<oc:size/><oc:fileid/>'
+      '<nc:trashbin-filename/><nc:trashbin-original-location/>'
+      '<nc:trashbin-deletion-time/>'
+      '</d:prop></d:propfind>';
+
+  /// Всё, что лежит в корзине. Список плоский: подпапки удалённой папки
+  /// внутрь корзины отдельными записями не попадают.
+  Future<List<TrashItem>> listTrash() async {
+    final uri = trashUri(['trash']);
+    final res = await _send('PROPFIND', uri,
+        headers: {'Depth': '1', 'Content-Type': 'application/xml; charset=utf-8'},
+        body: utf8.encode(_trashBody));
+
+    // Корзина может быть выключена на сервере — это не ошибка клиента.
+    if (res.statusCode == 404) {
+      throw NextcloudException('Корзина на сервере недоступна: приложение '
+          '«Deleted files» выключено');
+    }
+    if (res.statusCode != 207) throw NextcloudException.fromStatus(res.statusCode, uri);
+
+    final items = parseTrash(res.bodyBytes, _trashRoot.length + 1);
+    items.sort((a, b) =>
+        (b.deletedAt ?? DateTime(0)).compareTo(a.deletedAt ?? DateTime(0)));
+    return items;
+  }
+
+  /// Возврат файла на исходное место. Сервер сам знает, куда: путь хранится
+  /// в свойстве записи, а restore — виртуальная папка, а не настоящая.
+  Future<void> restoreFromTrash(TrashItem item) async {
+    final uri = trashUri(['trash', item.id]);
+    final res = await _send('MOVE', uri, headers: {
+      'Destination': trashUri(['restore', item.id]).toString(),
+      'Overwrite': 'F',
+    });
+    if (res.statusCode != 201 && res.statusCode != 204) {
+      throw NextcloudException.fromStatus(res.statusCode, uri);
+    }
+  }
+
+  /// Удаление насовсем: после него файла нет нигде.
+  Future<void> deleteFromTrash(TrashItem item) async {
+    final uri = trashUri(['trash', item.id]);
+    final res = await _send('DELETE', uri);
+    if (res.statusCode != 204 && res.statusCode != 200) {
+      throw NextcloudException.fromStatus(res.statusCode, uri);
+    }
+  }
+
+  /// Очистить корзину целиком.
+  Future<void> emptyTrash() async {
+    final uri = trashUri(['trash']);
+    final res = await _send('DELETE', uri);
+    if (res.statusCode != 204 && res.statusCode != 200) {
+      throw NextcloudException.fromStatus(res.statusCode, uri);
+    }
+  }
+
+  List<String> get _trashRoot =>
+      [..._basePrefix, 'remote.php', 'dav', 'trashbin', account.loginName];
+
+  /// Разбор ответа корзины. Отдельно от [parseMultistatus]: свойства другие,
+  /// а показывать надо не служебное имя вида «отчёт.pdf.d1757...», а настоящее.
+  @visibleForTesting
+  static List<TrashItem> parseTrash(Uint8List bytes, int rootDepth) {
+    final doc = XmlDocument.parse(utf8.decode(bytes));
+    final out = <TrashItem>[];
+
+    for (final resp in doc.findAllElements('response', namespaceUri: '*')) {
+      final href = resp.findElements('href', namespaceUri: '*').firstOrNull?.innerText;
+      if (href == null) continue;
+
+      final segs = Uri.parse(href).pathSegments.where((s) => s.isNotEmpty).toList();
+      // Сама папка trash идёт первой записью — у неё нет своего сегмента.
+      if (segs.length <= rootDepth) continue;
+      final id = segs.last;
+
+      XmlElement? props;
+      for (final ps in resp.findElements('propstat', namespaceUri: '*')) {
+        final status = ps.findElements('status', namespaceUri: '*').firstOrNull?.innerText ?? '';
+        if (status.contains('200')) {
+          props = ps.findElements('prop', namespaceUri: '*').firstOrNull;
+          break;
+        }
+      }
+      final prop = props;
+      if (prop == null) continue;
+
+      String? text(String name) {
+        final v = prop.findElements(name, namespaceUri: '*').firstOrNull?.innerText.trim();
+        return (v == null || v.isEmpty) ? null : v;
+      }
+
+      final rt = prop.findElements('resourcetype', namespaceUri: '*').firstOrNull;
+      final isDir = rt?.findElements('collection', namespaceUri: '*').isNotEmpty ?? false;
+
+      final original = text('trashbin-original-location') ?? '';
+      final deleted = int.tryParse(text('trashbin-deletion-time') ?? '');
+
+      out.add(TrashItem(
+        id: id,
+        // Если сервер не отдал настоящее имя, отрезаем служебный хвост .d<время>
+        // сами — иначе в списке будет «отчёт.pdf.d1757068800».
+        name: text('trashbin-filename') ?? id.replaceFirst(RegExp(r'\.d\d+$'), ''),
+        originalLocation: original.replaceAll(RegExp(r'^/+'), ''),
+        isDir: isDir,
+        size: int.tryParse(text(isDir ? 'size' : 'getcontentlength') ?? '') ??
+            int.tryParse(text('size') ?? '') ??
+            0,
+        deletedAt: deleted == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(deleted * 1000, isUtc: true).toLocal(),
+        fileId: text('fileid'),
+        mimeType: text('getcontenttype'),
+      ));
+    }
+    return out;
   }
 
   /// Квота через PROPFIND корня — отдельного OCS-запроса не нужно.

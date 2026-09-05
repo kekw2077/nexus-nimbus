@@ -7,6 +7,7 @@ import 'screens/connect_screen.dart';
 import 'screens/files_screen.dart';
 import 'screens/local_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/trash_screen.dart';
 import 'screens/transfers_screen.dart';
 import 'services/prefs.dart';
 import 'services/updater.dart';
@@ -125,6 +126,7 @@ class _Connected extends StatelessWidget {
         const NavItem('files', 'Файлы', Icons.cloud_outlined),
         NavItem('local', 'Локальное', Icons.computer_rounded,
             badge: session.vault.fileCount > 0 ? '${session.vault.fileCount}' : null),
+        const NavItem('trash', 'Корзина', Icons.delete_outline_rounded),
         NavItem('transfers', 'Передачи', Icons.swap_vert_rounded,
             badge: active > 0 ? '$active' : null),
         const NavItem('settings', 'Настройки', Icons.tune_rounded),
@@ -146,6 +148,7 @@ class _Connected extends StatelessWidget {
       sidebarFooter: _Footer(session: session, onOpenLocal: () => onSelect('local')),
       child: switch (section) {
         'local' => LocalScreen(session: session),
+        'trash' => TrashScreen(session: session),
         'transfers' => TransfersScreen(session: session),
         'settings' => SettingsScreen(app: app, session: session, updater: updater),
         _ => FilesScreen(session: session),

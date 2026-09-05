@@ -47,6 +47,46 @@ const _multistatus = '''<?xml version="1.0"?>
   </d:response>
 </d:multistatus>''';
 
+/// Ответ корзины: служебное имя с хвостом .d<время>, настоящее имя и
+/// исходное расположение в отдельных свойствах, время удаления — unix.
+const _trash = """<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.org/ns">
+  <d:response>
+    <d:href>/remote.php/dav/trashbin/art/trash/</d:href>
+    <d:propstat>
+      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/remote.php/dav/trashbin/art/trash/%D0%BE%D1%82%D1%87%D1%91%D1%82.pdf.d1757068800</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getcontentlength>2048</d:getcontentlength>
+        <d:getcontenttype>application/pdf</d:getcontenttype>
+        <d:resourcetype/>
+        <oc:fileid>77</oc:fileid>
+        <nc:trashbin-filename>&#x43E;&#x442;&#x447;&#x451;&#x442;.pdf</nc:trashbin-filename>
+        <nc:trashbin-original-location>&#x414;&#x43E;&#x43A;&#x443;&#x43C;&#x435;&#x43D;&#x442;&#x44B;/&#x43E;&#x442;&#x447;&#x451;&#x442;.pdf</nc:trashbin-original-location>
+        <nc:trashbin-deletion-time>1757068800</nc:trashbin-deletion-time>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/remote.php/dav/trashbin/art/trash/archive.d1757000000</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+        <oc:size>50000</oc:size>
+        <nc:trashbin-original-location>archive</nc:trashbin-original-location>
+        <nc:trashbin-deletion-time>1757000000</nc:trashbin-deletion-time>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>""";
+
 void main() {
   group('разбор multistatus', () {
     // /remote.php/dav/files/art → четыре сегмента до пользовательских путей.
@@ -110,6 +150,57 @@ void main() {
 
     test('крупные значения показываются без дробной части', () {
       expect(formatBytes(1024 * 1024 * 512), '512 МБ');
+    });
+  });
+
+  group('разбор корзины', () {
+    // /remote.php/dav/trashbin/art -> четыре сегмента, плюс сам trash.
+    final items = WebDavClient.parseTrash(
+      Uint8List.fromList(utf8.encode(_trash)),
+      5,
+    );
+
+    test('саму папку trash в список не кладёт', () {
+      expect(items, hasLength(2));
+    });
+
+    test('показывает настоящее имя, а не служебное с хвостом .d<время>', () {
+      expect(items[0].name, 'отчёт.pdf');
+      expect(items[0].id, 'отчёт.pdf.d1757068800');
+    });
+
+    test('запоминает, откуда файл удалили', () {
+      expect(items[0].originalLocation, 'Документы/отчёт.pdf');
+      expect(items[0].restoreFolder, 'Документы');
+      // Удалённое из корня возвращается в корень.
+      expect(items[1].restoreFolder, '');
+    });
+
+    test('размер берёт из getcontentlength, у папки — из oc:size', () {
+      expect(items[0].size, 2048);
+      expect(items[1].size, 50000);
+      expect(items[1].isDir, isTrue);
+    });
+
+    test('время удаления переводит из unix-секунд', () {
+      // 1757068800 -> 5 сентября 2025, 10:40 UTC.
+      expect(items[0].deletedAt?.toUtc(), DateTime.utc(2025, 9, 5, 10, 40));
+    });
+  });
+
+  group('склонение', () {
+    test('единственное, малое и множественное число', () {
+      expect(plural(1, 'объект', 'объекта', 'объектов'), 'объект');
+      expect(plural(3, 'объект', 'объекта', 'объектов'), 'объекта');
+      expect(plural(7, 'объект', 'объекта', 'объектов'), 'объектов');
+      expect(plural(21, 'объект', 'объекта', 'объектов'), 'объект');
+    });
+
+    test('одиннадцать—четырнадцать — исключение', () {
+      for (final n in [11, 12, 13, 14, 112]) {
+        expect(plural(n, 'объект', 'объекта', 'объектов'), 'объектов',
+            reason: 'n = $n');
+      }
     });
   });
 }

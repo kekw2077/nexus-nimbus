@@ -146,7 +146,7 @@ class _FilesScreenState extends State<FilesScreen> {
     if (files.isEmpty) return;
     final what = files.length == 1
         ? '«${files.first.name}»'
-        : '${files.length} ${_plural(files.length, 'объект', 'объекта', 'объектов')}';
+        : '${files.length} ${plural(files.length, 'объект', 'объекта', 'объектов')}';
     final ok = await confirm(
       context,
       title: 'Удалить $what?',
@@ -240,13 +240,7 @@ class _FilesScreenState extends State<FilesScreen> {
     if (paths.isEmpty) return;
     await _guard(() => s.uploadPaths(paths, into: targetFolder ?? s.path));
     _toast('Добавлено в очередь: ${paths.length} '
-        '${_plural(paths.length, 'объект', 'объекта', 'объектов')}');
-  }
-
-  static String _plural(int n, String one, String few, String many) {
-    final mod100 = n % 100;
-    if (mod100 >= 11 && mod100 <= 14) return many;
-    return switch (n % 10) { 1 => one, 2 || 3 || 4 => few, _ => many };
+        '${plural(paths.length, 'объект', 'объекта', 'объектов')}');
   }
 
   // ---------------------------------------------------------------- сборка

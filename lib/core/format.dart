@@ -15,6 +15,14 @@ String formatBytes(int bytes, {int decimals = 1}) {
   return '${value.toStringAsFixed(digits)} ${units[unit]}';
 }
 
+/// Русское склонение после числа: 1 объект, 2 объекта, 5 объектов.
+/// Одиннадцать—четырнадцать — исключение, они всегда «объектов».
+String plural(int n, String one, String few, String many) {
+  final mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  return switch (n % 10) { 1 => one, 2 || 3 || 4 => few, _ => many };
+}
+
 String formatSpeed(int bytesPerSecond) => '${formatBytes(bytesPerSecond)}/с';
 
 const _months = [
