@@ -59,6 +59,38 @@
         nimbus:sha256="096d2999bfe65609f1c3d9c30a000c78dbf23b79e2527bd0b20dfea32fca0085" />
     </item>
 
+    <item>
+      <title>Nexus Nimbus 0.2.0</title>
+      <pubDate>Sat, 05 Sep 2026 14:23:17 +0000</pubDate>
+      <sparkle:version>0.2.0</sparkle:version>
+      <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+      <description><![CDATA[
+        <style>
+          html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#F2F4F8;}
+          a{color:#3F63D1;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Корзина сервера: восстановление на прежнее место, удаление насовсем, очистка целиком.</li>
+          <li>Папка для скачанных файлов выбирается в настройках — уже скачанное переезжает следом.</li>
+          <li>Размер и положение окна запоминаются между запусками.</li>
+          <li>Оформление приведено к макету: кнопки, боковое меню, контекстные меню, свечение значков.</li>
+          <li>Фон стал светлее, сетка точек убрана — в списке файлов она мешала читать строки.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.2.0/NexusNimbus-Setup-0.2.0.exe"
+        sparkle:version="0.2.0"
+        sparkle:os="windows"
+        length="12410262"
+        type="application/octet-stream"
+        sparkle:dsaSignature="MDwCHGRrmiw5glaIuJ05CgWskCPUE1YywMji9poPQ5oCHCfWqHZ4Wi/HLqkqUf6CFfvrLxH4k9fl2j1V0UI="
+        nimbus:sha256="c3232b2f4c80d827f13d73fc604c1f8b31a3b6e31298f34d7714d50337cbad09" />
+    </item>
+
     <!-- NIMBUS:NEXT-RELEASE -->
   </channel>
 </rss>
