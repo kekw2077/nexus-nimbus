@@ -301,8 +301,11 @@ class UsageMeter extends StatelessWidget {
 }
 
 /// Подложка нижнего блока панели. В прототипе это карточка состояния:
-/// `padding:13px 14px;border-radius:18px;border:1px solid var(--stroke);
-///  background:var(--field)`.
+/// `padding:13px 14px;border-radius:18px;border:1px solid var(--stroke)`.
+///
+/// Заливка взята плотнее прототипной `var(--field)`: та почти прозрачна,
+/// и пятна авроры просвечивали сквозь подписи, съедая их читаемость.
+/// Здесь важнее текст, чем прозрачность.
 class SidebarCard extends StatelessWidget {
   const SidebarCard({super.key, required this.children});
   final List<Widget> children;
@@ -313,7 +316,7 @@ class SidebarCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: p.field,
+        color: p.solid.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: p.stroke),
       ),

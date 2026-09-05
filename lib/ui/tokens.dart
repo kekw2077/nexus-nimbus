@@ -25,10 +25,14 @@ class NxPalette {
   static const warn = Color(0xFFF5B944);
   static const danger = Color(0xFFFF7A7A);
 
+  // Отступление от прототипа, сделанное намеренно: там фон #07080C —
+  // почти чёрный. На большом файловом списке он давит, поэтому поднят
+  // до тёмно-серого. Вместе с ним поднята и подложка панелей, иначе
+  // меню и диалоги перестали бы отделяться от страницы.
   static const dark = NxPalette(
-    bg: Color(0xFF07080C),
+    bg: Color(0xFF0F1116),
     card: Color(0x0BFFFFFF),
-    solid: Color(0xFF111319),
+    solid: Color(0xFF191C23),
     txt: Color(0xFFF2F4F8),
     body: Color(0xFFC7CBD6),
     sub: Color(0xFF9399A6),
