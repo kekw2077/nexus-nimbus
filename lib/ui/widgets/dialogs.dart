@@ -73,7 +73,7 @@ Future<String?> askText(
                   ),
                   const SizedBox(height: 18),
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    _Quiet(label: 'Отмена', onTap: () => Navigator.of(ctx).pop()),
+                    NxGhostButton(label: 'Отмена', onTap: () => Navigator.of(ctx).pop()),
                     const SizedBox(width: 10),
                     GradientButton(label: confirmLabel, onTap: submit),
                   ]),
@@ -131,7 +131,8 @@ Future<bool> confirm(
                     style: NxType.bodyText.copyWith(color: p.sub, fontSize: 13, height: 1.5)),
                 const SizedBox(height: 20),
                 Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  _Quiet(label: 'Отмена', onTap: () => Navigator.of(ctx).pop(false)),
+                  NxGhostButton(
+                      label: 'Отмена', onTap: () => Navigator.of(ctx).pop(false)),
                   const SizedBox(width: 10),
                   _Danger(
                     label: confirmLabel,
@@ -149,32 +150,6 @@ Future<bool> confirm(
   return result ?? false;
 }
 
-class _Quiet extends StatelessWidget {
-  const _Quiet({required this.label, required this.onTap});
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: p.field,
-            borderRadius: BorderRadius.circular(NxRadius.chip),
-            border: Border.all(color: p.stroke),
-          ),
-          child: Text(label, style: NxType.label.copyWith(color: p.body, fontSize: 13)),
-        ),
-      ),
-    );
-  }
-}
-
 class _Danger extends StatelessWidget {
   const _Danger({required this.label, required this.onTap, required this.danger});
   final String label;
@@ -189,14 +164,21 @@ class _Danger extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: NxPalette.danger,
             borderRadius: BorderRadius.circular(NxRadius.chip),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(0, 0, 0, 0.22),
+                offset: Offset(0, 6),
+                blurRadius: 18,
+              ),
+            ],
           ),
           child: Text(label,
               style: NxType.label.copyWith(
-                  color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                  color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600)),
         ),
       ),
     );

@@ -26,9 +26,9 @@ class Session extends ChangeNotifier {
   final TransferQueue transfers;
   final ThumbnailCache thumbs;
 
-  static Future<Session> create(NxAccount account) async {
+  static Future<Session> create(NxAccount account, {Directory? vaultRoot}) async {
     final dav = WebDavClient(account);
-    final vault = await Vault.open();
+    final vault = await Vault.open(customRoot: vaultRoot);
     final support = await getApplicationSupportDirectory();
     final thumbs = ThumbnailCache(dav, Directory(p.join(support.path, 'thumbnails')));
     final session = Session._(dav, vault, TransferQueue(dav, vault), thumbs);

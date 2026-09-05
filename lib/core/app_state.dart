@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../services/credentials_store.dart';
+import '../services/prefs.dart';
 import '../services/webdav_client.dart';
 import 'session.dart';
 
@@ -11,9 +14,10 @@ enum AppStage { starting, disconnected, connecting, connected }
 /// Верхний уровень: есть ли сохранённая учётная запись, идёт ли вход,
 /// живая сессия. Всё, что ниже, живёт внутри [Session].
 class AppState extends ChangeNotifier {
-  AppState(this._store);
+  AppState(this._store, this._prefs);
 
   final CredentialsStore _store;
+  final Prefs _prefs;
 
   AppStage _stage = AppStage.starting;
   Session? _session;
@@ -68,7 +72,12 @@ class AppState extends ChangeNotifier {
     }
 
     _session?.dispose();
-    final session = await Session.create(resolved);
+    // Папка хранилища из настроек; пусто — папка приложения по умолчанию.
+    final root = _prefs.readVaultRoot();
+    final session = await Session.create(
+      resolved,
+      vaultRoot: root.isEmpty ? null : Directory(root),
+    );
     _session = session;
     session.addListener(notifyListeners);
     _set(AppStage.connected);

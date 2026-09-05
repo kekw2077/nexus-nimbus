@@ -6,7 +6,6 @@ import 'tokens.dart';
 /// через InheritedWidget, чтобы любой экран мог прочитать NxTheme.of(context).
 
 enum NxBackground { aurora, shader, off }
-enum NxDotMode { push, glow, off }
 enum NxAnim { breathe, flow, pulse, off }
 
 @immutable
@@ -16,7 +15,6 @@ class NxThemeData {
     this.accent = NxAccent.google,
     this.glass = NxGlass.glass,
     this.background = NxBackground.aurora,
-    this.dots = NxDotMode.push,
     this.anim = NxAnim.breathe,
   });
 
@@ -24,7 +22,6 @@ class NxThemeData {
   final NxAccent accent;
   final NxGlass glass;
   final NxBackground background;
-  final NxDotMode dots;
   final NxAnim anim;
 
   NxPalette get palette => brightness == Brightness.dark ? NxPalette.dark : NxPalette.light;
@@ -32,13 +29,12 @@ class NxThemeData {
   double get blur => glass.blur;
 
   NxThemeData copyWith({Brightness? brightness, NxAccent? accent, NxGlass? glass,
-      NxBackground? background, NxDotMode? dots, NxAnim? anim}) =>
+      NxBackground? background, NxAnim? anim}) =>
       NxThemeData(
         brightness: brightness ?? this.brightness,
         accent: accent ?? this.accent,
         glass: glass ?? this.glass,
         background: background ?? this.background,
-        dots: dots ?? this.dots,
         anim: anim ?? this.anim,
       );
 

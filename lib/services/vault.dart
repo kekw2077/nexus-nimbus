@@ -55,9 +55,14 @@ class VaultEntry {
 /// Никакой фоновой магии: сюда попадает только то, что пользователь
 /// скачал явно или что закреплено.
 class Vault extends ChangeNotifier {
-  Vault._(this.root, this._indexFile, this._index);
+  Vault._(this._root, this._indexFile, this._index);
 
-  final Directory root;
+  Directory _root;
+
+  /// Куда складываются скачанные файлы. Меняется из настроек — вместе
+  /// с переносом уже скачанного, см. [moveRootTo].
+  Directory get root => _root;
+
   final File _indexFile;
   final Map<String, VaultEntry> _index;
 
@@ -69,11 +74,18 @@ class Vault extends ChangeNotifier {
 
   Timer? _flush;
 
+  /// Папка по умолчанию, когда своя не выбрана.
+  static Future<Directory> defaultRoot() async =>
+      Directory(p.join((await getApplicationSupportDirectory()).path, 'vault'));
+
   static Future<Vault> open({Directory? customRoot}) async {
-    final base = customRoot ?? Directory(p.join((await getApplicationSupportDirectory()).path, 'vault'));
+    final support = await getApplicationSupportDirectory();
+    final base = customRoot ?? await defaultRoot();
     await base.create(recursive: true);
 
-    final indexFile = File(p.join(base.parent.path, 'vault-index.json'));
+    // Индекс живёт в папке приложения, а не рядом с файлами: он описывает
+    // состояние, а не содержимое, и переезд хранилища его не касается.
+    final indexFile = File(p.join(support.path, 'vault-index.json'));
     final index = <String, VaultEntry>{};
     if (await indexFile.exists()) {
       try {
@@ -91,7 +103,7 @@ class Vault extends ChangeNotifier {
 
   /// Путь локальной копии для файла на сервере.
   File localFile(String remotePath) =>
-      File(p.join(root.path, p.joinAll(remotePath.split('/'))));
+      File(p.join(_root.path, p.joinAll(remotePath.split('/'))));
 
   VaultEntry? entry(String remotePath) => _index[remotePath];
 
@@ -227,10 +239,50 @@ class Vault extends ChangeNotifier {
       if (await f.exists()) await f.delete();
       _index.remove(path);
     }
-    await _pruneEmptyDirs(root);
+    await _pruneEmptyDirs(_root);
     await _persist();
     notifyListeners();
     return victims.length;
+  }
+
+  /// Переносит хранилище в другую папку вместе с уже скачанным.
+  ///
+  /// Файлы именно переносятся, а не бросаются на старом месте: иначе
+  /// получилось бы ровно то, ради чего затевалось приложение, — копии
+  /// неизвестно где. Возвращает, сколько файлов переехало.
+  Future<int> moveRootTo(Directory target) async {
+    if (p.equals(target.path, _root.path)) return 0;
+    await target.create(recursive: true);
+
+    final old = _root;
+    var moved = 0;
+    for (final entry in _index.values.toList()) {
+      final from = File(p.join(old.path, p.joinAll(entry.path.split('/'))));
+      if (!await from.exists()) continue;
+      final to = File(p.join(target.path, p.joinAll(entry.path.split('/'))));
+      await to.parent.create(recursive: true);
+      if (await to.exists()) await to.delete();
+      try {
+        await from.rename(to.path);
+      } on FileSystemException {
+        // Перенос между дисками переименованием не делается — копируем.
+        await from.copy(to.path);
+        await from.delete();
+      }
+      // Время изменения после переезда другое; иначе файл сразу считался бы
+      // правленым и попал бы в «изменён, не отправлен».
+      entry.localMtimeMs = (await to.stat()).modified.millisecondsSinceEpoch;
+      moved++;
+    }
+
+    _root = target;
+    if (await old.exists()) {
+      await _pruneEmptyDirs(old);
+      if (await old.list().isEmpty) await old.delete();
+    }
+    await _persist();
+    notifyListeners();
+    return moved;
   }
 
   /// Сверка индекса с диском для одной папки: файл могли удалить снаружи
@@ -265,9 +317,12 @@ class Vault extends ChangeNotifier {
     }
   }
 
-  Future<void> _pruneEmptyDirs(Directory dir) async {
+  /// Убирает пустые папки, оставшиеся после чистки или переезда.
+  /// Сам [stopAt] не удаляется — он и есть корень обхода.
+  Future<void> _pruneEmptyDirs(Directory dir, [Directory? stopAt]) async {
+    final root = stopAt ?? dir;
     await for (final entity in dir.list(followLinks: false)) {
-      if (entity is Directory) await _pruneEmptyDirs(entity);
+      if (entity is Directory) await _pruneEmptyDirs(entity, root);
     }
     if (dir.path != root.path && await dir.list().isEmpty) {
       await dir.delete();

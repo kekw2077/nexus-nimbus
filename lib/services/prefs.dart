@@ -17,12 +17,17 @@ class Prefs {
   static const _accent = 'ui.accent';
   static const _glass = 'ui.glass';
   static const _background = 'ui.background';
-  static const _dots = 'ui.dots';
   static const _anim = 'ui.anim';
   static const _section = 'ui.section';
   static const _updateChannel = 'update.channel';
   static const _updateServer = 'update.server';
   static const _updateAuto = 'update.auto';
+  static const _vaultRoot = 'vault.root';
+  static const _winW = 'window.width';
+  static const _winH = 'window.height';
+  static const _winX = 'window.x';
+  static const _winY = 'window.y';
+  static const _winMax = 'window.maximized';
 
   NxThemeData readTheme() => NxThemeData(
         brightness: _p.getString(_theme) == 'light' ? Brightness.light : Brightness.dark,
@@ -32,9 +37,6 @@ class Prefs {
         ),
         glass: _enum(NxGlass.values, _p.getString(_glass), NxGlass.glass),
         background: _enum(NxBackground.values, _p.getString(_background), NxBackground.aurora),
-        // Сетка по умолчанию в режиме свечения: она дешевле физики и
-        // не отвлекает от плотного списка файлов.
-        dots: _enum(NxDotMode.values, _p.getString(_dots), NxDotMode.glow),
         anim: _enum(NxAnim.values, _p.getString(_anim), NxAnim.breathe),
       );
 
@@ -43,7 +45,6 @@ class Prefs {
     await _p.setString(_accent, t.accent.id);
     await _p.setString(_glass, t.glass.name);
     await _p.setString(_background, t.background.name);
-    await _p.setString(_dots, t.dots.name);
     await _p.setString(_anim, t.anim.name);
   }
 
@@ -67,6 +68,41 @@ class Prefs {
   bool readAutoCheck() => _p.getBool(_updateAuto) ?? true;
 
   Future<void> writeAutoCheck(bool value) => _p.setBool(_updateAuto, value);
+
+  // ------------------------------------------------------------ хранилище
+
+  /// Куда складывать скачанные файлы. Пусто — папка приложения по умолчанию.
+  String readVaultRoot() => _p.getString(_vaultRoot) ?? '';
+
+  Future<void> writeVaultRoot(String path) => _p.setString(_vaultRoot, path);
+
+  // ----------------------------------------------------------------- окно
+
+  Size? readWindowSize() {
+    final w = _p.getDouble(_winW);
+    final h = _p.getDouble(_winH);
+    return (w == null || h == null) ? null : Size(w, h);
+  }
+
+  Future<void> writeWindowSize(Size size) async {
+    await _p.setDouble(_winW, size.width);
+    await _p.setDouble(_winH, size.height);
+  }
+
+  Offset? readWindowPosition() {
+    final x = _p.getDouble(_winX);
+    final y = _p.getDouble(_winY);
+    return (x == null || y == null) ? null : Offset(x, y);
+  }
+
+  Future<void> writeWindowPosition(Offset at) async {
+    await _p.setDouble(_winX, at.dx);
+    await _p.setDouble(_winY, at.dy);
+  }
+
+  bool readWindowMaximized() => _p.getBool(_winMax) ?? false;
+
+  Future<void> writeWindowMaximized(bool value) => _p.setBool(_winMax, value);
 
   static T _enum<T extends Enum>(List<T> values, String? name, T fallback) {
     for (final v in values) {

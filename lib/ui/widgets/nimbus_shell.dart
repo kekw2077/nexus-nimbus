@@ -4,17 +4,21 @@ import 'package:window_manager/window_manager.dart';
 import '../theme.dart';
 import '../tokens.dart';
 import 'aurora_background.dart';
-import 'dot_grid.dart';
+import 'controls.dart';
 import 'window_chrome.dart';
 
 class NavItem {
-  const NavItem(this.id, this.label, this.icon, {this.badge});
+  const NavItem(this.id, this.label, this.icon, {this.badge, this.shortcut});
   final String id;
   final String label;
   final IconData icon;
 
   /// Число справа: например количество активных передач.
   final String? badge;
+
+  /// Подсказка горячей клавиши, как в прототипе: «Ctrl 1».
+  /// Показывается, только когда счётчика нет — иначе им тесно вдвоём.
+  final String? shortcut;
 }
 
 /// Оболочка окна: фон → сетка точек → боковое меню и содержимое.
@@ -26,6 +30,7 @@ class NimbusShell extends StatelessWidget {
     required this.current,
     required this.onSelect,
     required this.child,
+    this.subtitle,
     this.sidebarFooter,
     this.titleBar,
   });
@@ -34,6 +39,10 @@ class NimbusShell extends StatelessWidget {
   final String current;
   final ValueChanged<String> onSelect;
   final Widget child;
+
+  /// Вторая строка под именем в боковой панели: адрес сервера и учётная запись.
+  final String? subtitle;
+
   final Widget? sidebarFooter;
   final Widget? titleBar;
 
@@ -44,13 +53,13 @@ class NimbusShell extends StatelessWidget {
       color: p.bg,
       child: Stack(children: [
         const Positioned.fill(child: NxBackgroundLayer()),
-        const Positioned.fill(child: DotGrid()),
         Positioned.fill(
           child: Row(children: [
             _Sidebar(
               items: items,
               current: current,
               onSelect: onSelect,
+              subtitle: subtitle,
               footer: sidebarFooter,
             ),
             Expanded(
@@ -71,12 +80,14 @@ class _Sidebar extends StatelessWidget {
     required this.items,
     required this.current,
     required this.onSelect,
+    required this.subtitle,
     required this.footer,
   });
 
   final List<NavItem> items;
   final String current;
   final ValueChanged<String> onSelect;
+  final String? subtitle;
   final Widget? footer;
 
   @override
@@ -87,38 +98,44 @@ class _Sidebar extends StatelessWidget {
       width: 226,
       decoration: BoxDecoration(border: Border(right: BorderSide(color: p.stroke))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // Логотип живёт в зоне заголовка, поэтому его тоже можно тащить.
-        SizedBox(
-          height: WindowChrome.height,
-          child: DragToMoveArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-              child: Row(children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    gradient: t.accent.badge,
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.cloud_rounded, size: 14, color: Colors.white),
+        // Имя и состояние подключения — блоком, как в прототипе. Заодно это
+        // зона перетаскивания окна: рамки у него своей нет.
+        DragToMoveArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: Row(children: [
+              const NxBadge(icon: Icons.cloud_rounded, size: 34, radius: 12),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Nimbus',
+                        style: NxType.label.copyWith(
+                            color: p.txt, fontSize: 14.5, fontWeight: FontWeight.w700)),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: NxType.section.copyWith(color: p.faint, fontSize: 9.5),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Text('Nimbus',
-                    style: NxType.label.copyWith(
-                        color: p.txt, fontSize: 14.5, fontWeight: FontWeight.w700)),
-              ]),
-            ),
+              ),
+            ]),
           ),
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             children: [
               for (final it in items) ...[
                 _NavRow(item: it, selected: it.id == current, onTap: () => onSelect(it.id)),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
               ],
             ],
           ),
@@ -148,6 +165,15 @@ class _NavRowState extends State<_NavRow> {
     final t = NxTheme.of(context);
     final p = t.palette;
     final on = widget.selected;
+
+    // Разметка прототипа:
+    //   gap:12px; padding:10px 13px; border-radius:14px;
+    //   font-size:13.5px; font-weight:500;
+    //   выбранный  -> background:linear-gradient(100deg,var(--accsoft),transparent);
+    //                 color:var(--txt); box-shadow:inset 0 0 0 1px var(--stroke)
+    //   наведённый -> background:var(--hover); color:var(--txt)
+    // Рамка у выбранного именно нейтральная (--stroke), а не акцентная:
+    // акцент здесь даёт только заливка, и то полупрозрачная и затухающая.
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -156,23 +182,41 @@ class _NavRowState extends State<_NavRow> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: NxMotion.hover,
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
           decoration: BoxDecoration(
-            color: on ? p.accentSoft : (_hover ? p.hover : Colors.transparent),
-            borderRadius: BorderRadius.circular(NxRadius.tile),
-            border: Border.all(
-              color: on ? t.accent.a2.withValues(alpha: 0.5) : Colors.transparent,
-            ),
+            gradient: on
+                ? LinearGradient(
+                    // 100deg в CSS — почти слева направо, с лёгким наклоном вниз.
+                    begin: const Alignment(-1, -0.18),
+                    end: const Alignment(1, 0.18),
+                    colors: [p.accentSoft, p.accentSoft.withValues(alpha: 0)],
+                  )
+                : null,
+            color: on ? null : (_hover ? p.hover : Colors.transparent),
+            borderRadius: BorderRadius.circular(14),
+            border: on ? Border.all(color: p.stroke) : null,
           ),
           child: Row(children: [
-            Icon(widget.item.icon, size: 17, color: on ? p.txt : p.sub),
-            const SizedBox(width: 11),
+            Icon(widget.item.icon, size: 17, color: on || _hover ? p.txt : p.sub),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 widget.item.label,
-                style: NxType.label.copyWith(color: on ? p.txt : p.body),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: NxType.label.copyWith(
+                  color: on || _hover ? p.txt : p.sub,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
+            if (widget.item.badge == null && widget.item.shortcut != null)
+              Text(
+                widget.item.shortcut!,
+                // В прототипе подсказка приглушена всегда, даже у выбранного.
+                style: NxType.numeric.copyWith(color: p.faint, fontSize: 10.5),
+              ),
             if (widget.item.badge != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -252,6 +296,60 @@ class UsageMeter extends StatelessWidget {
       ),
       const SizedBox(height: 6),
       Text(caption, style: NxType.numeric.copyWith(color: p.sub, fontSize: 10.5)),
+    ]);
+  }
+}
+
+/// Подложка нижнего блока панели. В прототипе это карточка состояния:
+/// `padding:13px 14px;border-radius:18px;border:1px solid var(--stroke);
+///  background:var(--field)`.
+class SidebarCard extends StatelessWidget {
+  const SidebarCard({super.key, required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = NxTheme.of(context).palette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: p.field,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: p.stroke),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+    );
+  }
+}
+
+/// Строка состояния со светящейся точкой — `box-shadow:0 0 9px` того же цвета.
+class StatusDot extends StatelessWidget {
+  const StatusDot({super.key, required this.label, this.color = NxPalette.ok});
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = NxTheme.of(context).palette;
+    return Row(children: [
+      Container(
+        width: 7,
+        height: 7,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          boxShadow: [BoxShadow(color: color, blurRadius: 9)],
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: NxType.label.copyWith(color: p.txt, fontSize: 12.5),
+        ),
+      ),
     ]);
   }
 }

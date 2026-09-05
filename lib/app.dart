@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/app_state.dart';
 import 'core/format.dart';
@@ -87,6 +88,7 @@ class _RootState extends State<_Root> {
         app: app,
         session: session,
         updater: widget.updater,
+        prefs: widget.prefs,
         section: _section,
         onSelect: _select,
       );
@@ -103,6 +105,7 @@ class _Connected extends StatelessWidget {
     required this.app,
     required this.session,
     required this.updater,
+    required this.prefs,
     required this.section,
     required this.onSelect,
   });
@@ -110,49 +113,57 @@ class _Connected extends StatelessWidget {
   final AppState app;
   final Session session;
   final UpdaterService updater;
+  final Prefs prefs;
   final String section;
   final ValueChanged<String> onSelect;
 
+  /// Разделы переключаются с клавиатуры — те самые «Ctrl 1…5»,
+  /// что подписаны справа от названий в боковой панели.
+  static const _sections = ['files', 'local', 'trash', 'transfers', 'settings'];
+  static const _digits = [
+    LogicalKeyboardKey.digit1,
+    LogicalKeyboardKey.digit2,
+    LogicalKeyboardKey.digit3,
+    LogicalKeyboardKey.digit4,
+    LogicalKeyboardKey.digit5,
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final t = NxTheme.of(context);
-    final p = t.palette;
     final active = session.transfers.activeCount;
 
-    return NimbusShell(
-      current: section,
-      onSelect: onSelect,
-      items: [
-        const NavItem('files', 'Файлы', Icons.cloud_outlined),
-        NavItem('local', 'Локальное', Icons.computer_rounded,
-            badge: session.vault.fileCount > 0 ? '${session.vault.fileCount}' : null),
-        const NavItem('trash', 'Корзина', Icons.delete_outline_rounded),
-        NavItem('transfers', 'Передачи', Icons.swap_vert_rounded,
-            badge: active > 0 ? '$active' : null),
-        const NavItem('settings', 'Настройки', Icons.tune_rounded),
-      ],
-      titleBar: WindowChrome(
-        center: Padding(
-          padding: const EdgeInsets.only(left: 6),
-          child: Row(children: [
-            Icon(Icons.circle, size: 7, color: NxPalette.ok),
-            const SizedBox(width: 8),
-            Text(
-              '${session.account.baseUrl.host} · '
-              '${session.account.displayName ?? session.account.loginName}',
-              style: NxType.numeric.copyWith(color: p.faint, fontSize: 10.5),
-            ),
-          ]),
-        ),
-      ),
-      sidebarFooter: _Footer(session: session, onOpenLocal: () => onSelect('local')),
-      child: switch (section) {
-        'local' => LocalScreen(session: session),
-        'trash' => TrashScreen(session: session),
-        'transfers' => TransfersScreen(session: session),
-        'settings' => SettingsScreen(app: app, session: session, updater: updater),
-        _ => FilesScreen(session: session),
+    return CallbackShortcuts(
+      bindings: {
+        for (var i = 0; i < _sections.length; i++)
+          SingleActivator(_digits[i], control: true): () => onSelect(_sections[i]),
       },
+      child: NimbusShell(
+        current: section,
+        onSelect: onSelect,
+        subtitle: '${session.account.baseUrl.host} · '
+            '${session.account.displayName ?? session.account.loginName}',
+        items: [
+          const NavItem('files', 'Файлы', Icons.cloud_outlined, shortcut: 'Ctrl 1'),
+          NavItem('local', 'Локальное', Icons.computer_rounded,
+              shortcut: 'Ctrl 2',
+              badge: session.vault.fileCount > 0 ? '${session.vault.fileCount}' : null),
+          const NavItem('trash', 'Корзина', Icons.delete_outline_rounded,
+              shortcut: 'Ctrl 3'),
+          NavItem('transfers', 'Передачи', Icons.swap_vert_rounded,
+              shortcut: 'Ctrl 4', badge: active > 0 ? '$active' : null),
+          const NavItem('settings', 'Настройки', Icons.tune_rounded, shortcut: 'Ctrl 5'),
+        ],
+        titleBar: const WindowChrome(),
+        sidebarFooter: _Footer(session: session, onOpenLocal: () => onSelect('local')),
+        child: switch (section) {
+          'local' => LocalScreen(session: session),
+          'trash' => TrashScreen(session: session),
+          'transfers' => TransfersScreen(session: session),
+          'settings' =>
+            SettingsScreen(app: app, session: session, updater: updater, prefs: prefs),
+          _ => FilesScreen(session: session),
+        },
+      ),
     );
   }
 }
@@ -166,11 +177,12 @@ class _Footer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = NxTheme.of(context);
     final quota = session.quota;
     final usage = session.vault.usage();
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return SidebarCard(children: [
+      StatusDot(label: 'Подключено'),
+      const SizedBox(height: 13),
       UsageMeter(
         title: 'На сервере',
         fraction: quota?.fraction ?? 0,
@@ -180,7 +192,7 @@ class _Footer extends StatelessWidget {
                 ? '${formatBytes(quota.used)} · без ограничения'
                 : '${formatBytes(quota.used)} из ${formatBytes(quota.total)}',
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: 13),
       UsageMeter(
         title: 'На этом компьютере',
         // Локальный кэш меряем относительно того же объёма, что и сервер:
@@ -195,12 +207,6 @@ class _Footer extends StatelessWidget {
         actionIcon: Icons.chevron_right_rounded,
         actionTooltip: 'Показать локальные копии',
         onTap: onOpenLocal,
-      ),
-      const SizedBox(height: 4),
-      Divider(color: t.palette.stroke, height: 18),
-      Text(
-        'Nexus Nimbus',
-        style: NxType.numeric.copyWith(color: t.palette.faint, fontSize: 10),
       ),
     ]);
   }

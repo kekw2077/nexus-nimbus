@@ -304,7 +304,7 @@ class _FilesScreenState extends State<FilesScreen> {
                   _onDrop(d, target);
                 },
                 child: GlassPanel(
-                  radius: NxRadius.card,
+                  radius: NxRadius.panel,
                   padding: EdgeInsets.zero,
                   color: _dragOverBody ? t.accent.a2.withValues(alpha: 0.10) : null,
                   child: Stack(children: [
@@ -561,20 +561,14 @@ class _Toolbar extends StatelessWidget {
         ]),
         const SizedBox(height: 11),
         Row(children: [
-          GradientButton(
-            label: 'Загрузить',
-            icon: Icons.upload_rounded,
-            fontSize: 12.5,
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
-            onTap: onUpload,
-          ),
+          GradientButton(label: 'Загрузить', icon: Icons.upload_rounded, onTap: onUpload),
           const SizedBox(width: 8),
-          _QuietButton(
+          NxGhostButton(
               label: 'Загрузить папку',
               icon: Icons.drive_folder_upload_rounded,
               onTap: onUploadFolder),
           const SizedBox(width: 8),
-          _QuietButton(
+          NxGhostButton(
               label: 'Новая папка',
               icon: Icons.create_new_folder_outlined,
               onTap: onNewFolder),
@@ -765,19 +759,19 @@ class _SelectionBar extends StatelessWidget {
           style: NxType.label.copyWith(color: p.txt, fontSize: 12.5),
         ),
         const Spacer(),
-        _QuietButton(label: 'Скачать', icon: Icons.download_rounded, onTap: onDownload),
+        NxGhostButton(label: 'Скачать', icon: Icons.download_rounded, onTap: onDownload),
         const SizedBox(width: 6),
-        _QuietButton(label: 'Держать локально', icon: Icons.push_pin_outlined, onTap: onPin),
+        NxGhostButton(label: 'Держать локально', icon: Icons.push_pin_outlined, onTap: onPin),
         const SizedBox(width: 6),
-        _QuietButton(label: 'Освободить', icon: Icons.cloud_off_rounded, onTap: onEvict),
+        NxGhostButton(label: 'Освободить', icon: Icons.cloud_off_rounded, onTap: onEvict),
         const SizedBox(width: 6),
         if (n == 1)
-          _QuietButton(
+          NxGhostButton(
               label: 'Переименовать',
               icon: Icons.drive_file_rename_outline_rounded,
               onTap: onRename),
         if (n == 1) const SizedBox(width: 6),
-        _QuietButton(
+        NxGhostButton(
             label: 'Удалить', icon: Icons.delete_outline_rounded, danger: true, onTap: onDelete),
         const SizedBox(width: 10),
         _IconAction(
@@ -856,59 +850,6 @@ class _IconActionState extends State<_IconAction> with SingleTickerProviderState
             ),
             child: Center(child: icon),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _QuietButton extends StatefulWidget {
-  const _QuietButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.danger = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool danger;
-
-  @override
-  State<_QuietButton> createState() => _QuietButtonState();
-}
-
-class _QuietButtonState extends State<_QuietButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
-    final fg = widget.danger ? NxPalette.danger : (_hover ? p.txt : p.body);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: NxMotion.hover,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-          decoration: BoxDecoration(
-            color: _hover ? p.hover : p.field,
-            borderRadius: BorderRadius.circular(NxRadius.chip),
-            border: Border.all(
-              color: widget.danger && _hover
-                  ? NxPalette.danger.withValues(alpha: 0.6)
-                  : p.stroke,
-            ),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(widget.icon, size: 14, color: fg),
-            const SizedBox(width: 7),
-            Text(widget.label, style: NxType.label.copyWith(color: fg, fontSize: 12)),
-          ]),
         ),
       ),
     );

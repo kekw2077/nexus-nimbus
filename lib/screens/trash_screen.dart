@@ -191,7 +191,7 @@ class _TrashScreenState extends State<TrashScreen> {
         child: Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Корзина', style: NxType.title.copyWith(color: p.txt)),
+              GradientText('Корзина', style: NxType.title),
               const SizedBox(height: 3),
               Text(
                 _items.isEmpty
@@ -211,10 +211,10 @@ class _TrashScreenState extends State<TrashScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          _Quiet(label: 'Обновить', icon: Icons.refresh_rounded, onTap: _load),
+          NxGhostButton(label: 'Обновить', icon: Icons.refresh_rounded, onTap: _load),
           if (_items.isNotEmpty) ...[
             const SizedBox(width: 8),
-            _Quiet(
+            NxGhostButton(
               label: 'Очистить корзину',
               icon: Icons.delete_sweep_rounded,
               danger: true,
@@ -238,12 +238,12 @@ class _TrashScreenState extends State<TrashScreen> {
             Text('Выбрано ${_selection.length}',
                 style: NxType.label.copyWith(color: p.txt, fontSize: 12.5)),
             const Spacer(),
-            _Quiet(
+            NxGhostButton(
                 label: 'Восстановить',
                 icon: Icons.restore_rounded,
                 onTap: () => _restore(_selected)),
             const SizedBox(width: 6),
-            _Quiet(
+            NxGhostButton(
               label: 'Стереть насовсем',
               icon: Icons.delete_forever_rounded,
               danger: true,
@@ -263,7 +263,7 @@ class _TrashScreenState extends State<TrashScreen> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
           child: GlassPanel(
-            radius: NxRadius.card,
+            radius: NxRadius.panel,
             padding: EdgeInsets.zero,
             child: _body(t, p),
           ),
@@ -474,59 +474,6 @@ class _Search extends StatelessWidget {
           focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(NxRadius.chip),
               borderSide: BorderSide(color: t.accent.a2)),
-        ),
-      ),
-    );
-  }
-}
-
-class _Quiet extends StatefulWidget {
-  const _Quiet({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.danger = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool danger;
-
-  @override
-  State<_Quiet> createState() => _QuietState();
-}
-
-class _QuietState extends State<_Quiet> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
-    final fg = widget.danger ? NxPalette.danger : (_hover ? p.txt : p.body);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: NxMotion.hover,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-          decoration: BoxDecoration(
-            color: _hover ? p.hover : p.field,
-            borderRadius: BorderRadius.circular(NxRadius.chip),
-            border: Border.all(
-              color: widget.danger && _hover
-                  ? NxPalette.danger.withValues(alpha: 0.6)
-                  : p.stroke,
-            ),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(widget.icon, size: 14, color: fg),
-            const SizedBox(width: 7),
-            Text(widget.label, style: NxType.label.copyWith(color: fg, fontSize: 12)),
-          ]),
         ),
       ),
     );

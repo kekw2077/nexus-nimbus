@@ -10,7 +10,6 @@ import '../ui/theme.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets/aurora_background.dart';
 import '../ui/widgets/controls.dart';
-import '../ui/widgets/dot_grid.dart';
 import '../ui/widgets/glass_panel.dart';
 import '../ui/widgets/window_chrome.dart';
 
@@ -160,7 +159,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
       color: p.bg,
       child: Stack(children: [
         const Positioned.fill(child: NxBackgroundLayer()),
-        const Positioned.fill(child: DotGrid()),
         Positioned.fill(
           child: Column(children: [
             const WindowChrome(),
@@ -258,11 +256,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2.2, color: t.accent.a2),
                   ),
                 )
-              : GradientButton(
-                  label: 'Подключиться',
-                  icon: Icons.arrow_forward_rounded,
-                  onTap: _connectManually,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+              : Center(
+                  child: GradientButton(
+                    label: 'Подключиться',
+                    icon: Icons.arrow_forward_rounded,
+                    onTap: _connectManually,
+                    large: true,
+                  ),
                 ),
         ),
       ]),

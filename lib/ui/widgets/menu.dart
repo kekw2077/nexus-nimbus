@@ -30,10 +30,11 @@ Future<void> showNimbusMenu(
     context: context,
     color: p.solid,
     surfaceTintColor: Colors.transparent,
-    elevation: 14,
-    shadowColor: const Color(0x99000000),
+    // Из прототипа: радиус 18, рамка stroke2, тень 0 20px 48px rgba(0,0,0,.42).
+    elevation: 20,
+    shadowColor: const Color(0x6B000000),
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(NxRadius.tile),
+      borderRadius: BorderRadius.circular(18),
       side: BorderSide(color: p.stroke2),
     ),
     position: RelativeRect.fromRect(

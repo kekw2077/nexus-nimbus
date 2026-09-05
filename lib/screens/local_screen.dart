@@ -8,6 +8,7 @@ import '../core/session.dart';
 import '../services/vault.dart';
 import '../ui/theme.dart';
 import '../ui/tokens.dart';
+import '../ui/widgets/controls.dart';
 import '../ui/widgets/dialogs.dart';
 import '../ui/widgets/glass_panel.dart';
 import '../ui/widgets/presence_badge.dart';
@@ -38,7 +39,7 @@ class LocalScreen extends StatelessWidget {
         Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Локальные копии', style: NxType.title.copyWith(color: p.txt)),
+              GradientText('Локальные копии', style: NxType.title),
               const SizedBox(height: 3),
               Text(
                 entries.isEmpty
@@ -49,13 +50,13 @@ class LocalScreen extends StatelessWidget {
               ),
             ]),
           ),
-          _Quiet(
+          NxGhostButton(
             label: 'Открыть папку',
             icon: Icons.folder_open_rounded,
             onTap: () => launchUrl(Uri.file(vault.root.path)),
           ),
           const SizedBox(width: 8),
-          _Quiet(
+          NxGhostButton(
             label: 'Освободить место',
             icon: Icons.cleaning_services_rounded,
             onTap: () => _freeUp(context, vault),
@@ -64,7 +65,7 @@ class LocalScreen extends StatelessWidget {
         const SizedBox(height: 14),
         Expanded(
           child: GlassPanel(
-            radius: NxRadius.card,
+            radius: NxRadius.panel,
             padding: EdgeInsets.zero,
             child: entries.isEmpty
                 ? Center(
@@ -277,44 +278,3 @@ class _MiniState extends State<_Mini> {
   }
 }
 
-class _Quiet extends StatefulWidget {
-  const _Quiet({required this.label, required this.icon, required this.onTap});
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  State<_Quiet> createState() => _QuietState();
-}
-
-class _QuietState extends State<_Quiet> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: NxMotion.hover,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-          decoration: BoxDecoration(
-            color: _hover ? p.hover : p.field,
-            borderRadius: BorderRadius.circular(NxRadius.chip),
-            border: Border.all(color: p.stroke),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(widget.icon, size: 14, color: _hover ? p.txt : p.body),
-            const SizedBox(width: 7),
-            Text(widget.label,
-                style: NxType.label.copyWith(color: _hover ? p.txt : p.body, fontSize: 12)),
-          ]),
-        ),
-      ),
-    );
-  }
-}

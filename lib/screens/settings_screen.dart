@@ -1,8 +1,13 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_state.dart';
 import '../core/format.dart';
 import '../core/session.dart';
+import '../services/prefs.dart';
 import '../services/updater.dart';
 import '../ui/theme.dart';
 import '../ui/tokens.dart';
@@ -16,11 +21,13 @@ class SettingsScreen extends StatefulWidget {
     required this.app,
     required this.session,
     required this.updater,
+    required this.prefs,
   });
 
   final AppState app;
   final Session session;
   final UpdaterService updater;
+  final Prefs prefs;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -33,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   AppState get app => widget.app;
   Session get session => widget.session;
   UpdaterService get updater => widget.updater;
+  Prefs get prefs => widget.prefs;
 
   @override
   void initState() {
@@ -45,6 +53,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
     updater.removeListener(_onUpdater);
     _server.dispose();
     super.dispose();
+  }
+
+  /// Смена папки хранилища. Уже скачанное переносится следом: оставить его
+  /// на старом месте значило бы развести копии неизвестно где — ровно то,
+  /// против чего это приложение и написано.
+  Future<void> _pickVaultFolder() async {
+    final picked = await getDirectoryPath(confirmButtonText: 'Выбрать');
+    if (picked == null || !mounted) return;
+
+    final target = Directory(picked);
+    if (target.path == session.vault.root.path) return;
+
+    final usage = session.vault.usage();
+    if (usage.total > 0) {
+      final ok = await confirm(
+        context,
+        title: 'Перенести хранилище?',
+        message: '${formatBytes(usage.total)} скачанных файлов переедет '
+            'из «${session.vault.root.path}» в «${target.path}». '
+            'На сервере ничего не изменится.',
+        confirmLabel: 'Перенести',
+        danger: false,
+      );
+      if (!ok || !mounted) return;
+    }
+
+    try {
+      final moved = await session.vault.moveRootTo(target);
+      await prefs.writeVaultRoot(target.path);
+      if (!mounted) return;
+      _toast(moved == 0
+          ? 'Новая папка: ${target.path}'
+          : 'Перенесено файлов: $moved');
+    } catch (e) {
+      if (mounted) _toast('Не удалось перенести: $e', danger: true);
+    }
+  }
+
+  void _toast(String message, {bool danger = false}) {
+    final p = NxTheme.of(context).palette;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        width: 560,
+        backgroundColor: p.solid,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(NxRadius.tile),
+          side: BorderSide(color: danger ? NxPalette.danger : p.stroke2),
+        ),
+        content: Row(children: [
+          Icon(danger ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              size: 16, color: danger ? NxPalette.danger : NxPalette.ok),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(message,
+                style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
+          ),
+        ]),
+      ));
   }
 
   void _onUpdater() {
@@ -61,7 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Настройки', style: NxType.title.copyWith(color: p.txt)),
+        GradientText('Настройки', style: NxType.title),
         const SizedBox(height: 3),
         Text('Оформление, хранилище, обновления и подключение',
             style: NxType.caption.copyWith(color: p.sub)),
@@ -79,7 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: _Quiet(
+                  child: NxGhostButton(
                     label: 'Отключиться и забыть пароль',
                     icon: Icons.logout_rounded,
                     danger: true,
@@ -112,7 +180,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               '${formatBytes(session.quota!.total)}'),
                 const SizedBox(height: 12),
                 Row(children: [
-                  _Quiet(
+                  NxGhostButton(
+                    label: 'Выбрать папку…',
+                    icon: Icons.drive_file_move_outlined,
+                    onTap: _pickVaultFolder,
+                  ),
+                  const SizedBox(width: 8),
+                  NxGhostButton(
+                    label: 'Открыть папку',
+                    icon: Icons.folder_open_rounded,
+                    onTap: () => launchUrl(Uri.file(session.vault.root.path)),
+                  ),
+                  const SizedBox(width: 8),
+                  NxGhostButton(
                     label: 'Очистить кэш миниатюр',
                     icon: Icons.image_not_supported_outlined,
                     onTap: () => session.thumbs.clearDisk(),
@@ -185,29 +265,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           'Шейдер' => NxBackground.shader,
                           'Нет' => NxBackground.off,
                           _ => NxBackground.aurora,
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-                _Row(
-                  label: 'Сетка точек',
-                  hint: 'Режим «Отталкивание» пересчитывает физику каждый кадр',
-                  child: NxSegmented(
-                    options: const ['Свечение', 'Отталкивание', 'Нет'],
-                    value: switch (t.dots) {
-                      NxDotMode.glow => 'Свечение',
-                      NxDotMode.push => 'Отталкивание',
-                      NxDotMode.off => 'Нет',
-                    },
-                    compact: true,
-                    onChanged: (v) => NxTheme.set(
-                      context,
-                      t.copyWith(
-                        dots: switch (v) {
-                          'Отталкивание' => NxDotMode.push,
-                          'Нет' => NxDotMode.off,
-                          _ => NxDotMode.glow,
                         },
                       ),
                     ),
@@ -320,7 +377,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: NxToggle(value: updater.autoCheck, onChanged: updater.setAutoCheck),
       ),
       Row(children: [
-        _Quiet(
+        NxGhostButton(
           label: updater.status == UpdateStatus.checking
               ? 'Проверяем…'
               : 'Проверить обновления',
@@ -464,55 +521,3 @@ class _AccentDot extends StatelessWidget {
   }
 }
 
-class _Quiet extends StatefulWidget {
-  const _Quiet({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.danger = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool danger;
-
-  @override
-  State<_Quiet> createState() => _QuietState();
-}
-
-class _QuietState extends State<_Quiet> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
-    final fg = widget.danger ? NxPalette.danger : (_hover ? p.txt : p.body);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: NxMotion.hover,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-          decoration: BoxDecoration(
-            color: _hover ? p.hover : p.field,
-            borderRadius: BorderRadius.circular(NxRadius.chip),
-            border: Border.all(
-              color: widget.danger && _hover
-                  ? NxPalette.danger.withValues(alpha: 0.6)
-                  : p.stroke,
-            ),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(widget.icon, size: 14, color: fg),
-            const SizedBox(width: 7),
-            Text(widget.label, style: NxType.label.copyWith(color: fg, fontSize: 12)),
-          ]),
-        ),
-      ),
-    );
-  }
-}
