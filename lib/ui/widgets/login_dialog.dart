@@ -66,7 +66,11 @@ class _LoginBodyState extends State<_LoginBody> {
   /// прямо здесь, пока они пусты.
   final _clientId = TextEditingController();
   final _clientSecret = TextEditingController();
-  final _port = TextEditingController();
+
+  /// Код, который Яндекс показывает на своей странице после разрешения.
+  /// Ловить его приёмником нельзя: адрес возврата у приложения постоянный.
+  final _code = TextEditingController();
+  bool _codeWanted = false;
 
   bool _trustCertificate = false;
   bool _busy = false;
@@ -92,7 +96,6 @@ class _LoginBodyState extends State<_LoginBody> {
       final saved = widget.app.yandexClient;
       _clientId.text = saved.id;
       _clientSecret.text = saved.secret;
-      _port.text = '${saved.port}';
       _clientReady = !saved.isEmpty;
     }
   }
@@ -104,7 +107,7 @@ class _LoginBodyState extends State<_LoginBody> {
     _password.dispose();
     _clientId.dispose();
     _clientSecret.dispose();
-    _port.dispose();
+    _code.dispose();
     _flowCancel?.cancel();
     _flow?.dispose();
     _oauthWait?.cancel();
@@ -122,12 +125,7 @@ class _LoginBodyState extends State<_LoginBody> {
     }
 
     if (provider == CloudProvider.yandex) {
-      final port = int.tryParse(_port.text.trim());
-      if (port == null || port < 1024 || port > 65535) {
-        setState(() => _error = 'Порт должен быть числом от 1024 до 65535');
-        return;
-      }
-      await widget.app.saveYandexClient(id, secret, port);
+      await widget.app.saveYandexClient(id, secret);
     } else {
       await widget.app.saveGoogleClient(id, secret);
     }
@@ -140,7 +138,53 @@ class _LoginBodyState extends State<_LoginBody> {
     }
   }
 
-  Future<void> _connectOAuth() async {
+  /// Яндекс: отправляем за разрешением и ждём, пока код перенесут в поле.
+  Future<void> _askYandexCode() async {
+    final auth = YandexAuth(widget.app.yandexClient);
+    try {
+      await launchUrl(auth.authorizeUrl, mode: LaunchMode.externalApplication);
+      if (mounted) {
+        setState(() {
+          _codeWanted = true;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      auth.close();
+    }
+  }
+
+  Future<void> _connectYandex() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final auth = YandexAuth(widget.app.yandexClient);
+    try {
+      final granted = await auth.exchange(_code.text);
+      await widget.app.connect(NxAccount(
+        baseUrl: provider.fixedServer!,
+        loginName: granted.login,
+        // Токен ложится туда же, где у прочих облаков пароль приложения:
+        // в защищённое хранилище системы.
+        appPassword: granted.token,
+        provider: provider,
+      ));
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      auth.close();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Google: код ловит приёмник на локальном адресе — Google любой порт
+  /// принимает, и переносить руками ничего не нужно.
+  Future<void> _connectGoogle() async {
     final wait = CancelableWait();
     setState(() {
       _busy = true;
@@ -148,49 +192,27 @@ class _LoginBodyState extends State<_LoginBody> {
       _oauthWait = wait;
     });
 
-    Future<void> openUrl(Uri url) =>
-        launchUrl(url, mode: LaunchMode.externalApplication);
-
+    final auth = GoogleAuth(widget.app.googleClient);
     try {
-      final NxAccount account;
-
-      if (provider == CloudProvider.yandex) {
-        final auth = YandexAuth(widget.app.yandexClient);
-        try {
-          final granted = await auth.authorize(onUrl: openUrl, cancel: wait);
-          if (granted == null) return _timedOut(wait);
-          account = NxAccount(
-            baseUrl: provider.fixedServer!,
-            loginName: granted.login,
-            // Токен ложится туда же, где у прочих облаков пароль приложения:
-            // в защищённое хранилище системы.
-            appPassword: granted.token,
-            provider: provider,
-          );
-        } finally {
-          auth.close();
-        }
-      } else {
-        final auth = GoogleAuth(widget.app.googleClient);
-        try {
-          final granted = await auth.authorize(onUrl: openUrl, cancel: wait);
-          if (granted == null) return _timedOut(wait);
-          account = NxAccount(
-            baseUrl: provider.fixedServer!,
-            loginName: granted.email,
-            appPassword: granted.refreshToken,
-            provider: provider,
-          );
-        } finally {
-          auth.close();
-        }
+      final granted = await auth.authorize(
+        onUrl: (url) => launchUrl(url, mode: LaunchMode.externalApplication),
+        cancel: wait,
+      );
+      if (granted == null) {
+        _timedOut(wait);
+        return;
       }
-
-      await widget.app.connect(account);
+      await widget.app.connect(NxAccount(
+        baseUrl: provider.fixedServer!,
+        loginName: granted.email,
+        appPassword: granted.refreshToken,
+        provider: provider,
+      ));
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
+      auth.close();
       if (mounted) {
         setState(() {
           _busy = false;
@@ -380,8 +402,8 @@ class _LoginBodyState extends State<_LoginBody> {
         if (yandex) ...[
           const SizedBox(height: 9),
           Text(
-            'Там нужны права «Яндекс.Диск: чтение и запись» и «Доступ к логину», '
-            'а в поле Redirect URI — адрес ниже, ровно как написан.',
+            'Там нужны права «Яндекс.Диск: чтение и запись» и «Доступ к логину». '
+            'Redirect URI менять не нужно — подойдёт тот, что Яндекс подставил сам.',
             style: NxType.caption.copyWith(color: p.faint, fontSize: 10.5, height: 1.4),
           ),
         ],
@@ -392,16 +414,7 @@ class _LoginBodyState extends State<_LoginBody> {
         const SizedBox(height: 11),
         _label('Пароль приложения', p),
         NxField(controller: _clientSecret, hint: '••••••••', obscure: true),
-        if (yandex) ...[
-          const SizedBox(height: 11),
-          _label('Порт возврата', p),
-          NxField(controller: _port, hint: '8899'),
-          const SizedBox(height: 6),
-          Text(
-            'Redirect URI: http://127.0.0.1:${_port.text.trim().isEmpty ? '8899' : _port.text.trim()}',
-            style: NxType.numeric.copyWith(color: p.sub, fontSize: 11),
-          ),
-        ] else ...[
+        if (!yandex) ...[
           const SizedBox(height: 8),
           Text(
             'Пока приложение в Cloud Console не опубликовано, Google просит '
@@ -409,10 +422,20 @@ class _LoginBodyState extends State<_LoginBody> {
             style: NxType.caption.copyWith(color: p.faint, fontSize: 10.5, height: 1.4),
           ),
         ],
+      ] else if (yandex && _codeWanted) ...[
+        Text(
+          'На странице Яндекса разрешите доступ — он покажет короткий код. '
+          'Перенесите его сюда.',
+          style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.45),
+        ),
+        const SizedBox(height: 12),
+        _label('Код подтверждения', p),
+        NxField(controller: _code, hint: 'семь цифр со страницы'),
       ] else
         Text(
           yandex
-              ? 'Разрешение выдаётся в браузере: подтвердите доступ к Диску.'
+              ? 'Разрешение выдаётся в браузере: подтвердите доступ к Диску, '
+                  'а показанный код перенесите обратно сюда.'
               : 'Разрешение выдаётся в браузере: выберите учётную запись Google '
                   'и подтвердите доступ к Диску.',
           style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.45),
@@ -423,11 +446,17 @@ class _LoginBodyState extends State<_LoginBody> {
       ],
       const SizedBox(height: 16),
       Row(children: [
-        if (_clientReady)
+        if (_clientReady && !_codeWanted)
           NxGhostButton(
             label: 'Изменить',
             icon: Icons.tune_rounded,
             onTap: _busy ? null : () => setState(() => _clientReady = false),
+          ),
+        if (_codeWanted)
+          NxGhostButton(
+            label: 'Открыть снова',
+            icon: Icons.open_in_new_rounded,
+            onTap: _busy ? null : _askYandexCode,
           ),
         const Spacer(),
         NxGhostButton(
@@ -435,13 +464,18 @@ class _LoginBodyState extends State<_LoginBody> {
           onTap: _busy ? null : () => Navigator.of(context).pop(false),
         ),
         const SizedBox(width: 9),
-        if (_clientReady)
+        if (!_clientReady)
+          GradientButton(label: 'Сохранить', onTap: _busy ? null : _saveClient)
+        else if (_codeWanted)
           GradientButton(
-            label: _busy ? 'Открываем…' : 'Войти через браузер',
-            onTap: _busy ? null : _connectOAuth,
+            label: _busy ? 'Проверяем…' : 'Подключить',
+            onTap: _busy ? null : _connectYandex,
           )
         else
-          GradientButton(label: 'Сохранить', onTap: _busy ? null : _saveClient),
+          GradientButton(
+            label: _busy ? 'Открываем…' : 'Войти через браузер',
+            onTap: _busy ? null : (yandex ? _askYandexCode : _connectGoogle),
+          ),
       ]),
     ]);
   }

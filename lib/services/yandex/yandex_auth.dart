@@ -2,27 +2,17 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../oauth/loopback.dart';
 import '../webdav_client.dart' show NextcloudException;
 
 /// Учётные данные приложения в Яндексе. Регистрируются один раз человеком
-/// на oauth.yandex.ru — как и у Google, облако должно знать приложение,
-/// которому человек разрешает доступ.
+/// на oauth.yandex.ru — облако должно знать приложение, которому дают доступ.
 class YandexClientId {
-  const YandexClientId({required this.id, required this.secret, this.port = 8899});
+  const YandexClientId({required this.id, required this.secret});
 
   final String id;
   final String secret;
 
-  /// Порт, на который Яндекс вернёт браузер. В отличие от Google, Яндекс
-  /// сверяет адрес возврата с записанным у приложения — значит, порт должен
-  /// совпадать с тем, что указан в его настройках, и брать случайный нельзя.
-  final int port;
-
   bool get isEmpty => id.trim().isEmpty || secret.trim().isEmpty;
-
-  /// Адрес возврата, который надо вписать в настройках приложения.
-  String get redirectUri => 'http://127.0.0.1:$port';
 }
 
 /// Вход в Яндекс по OAuth.
@@ -31,8 +21,17 @@ class YandexClientId {
 /// подпискам и отвечает бесплатным записям кодом 402. REST API открыт всем,
 /// но ходит по токену, а не по паролю приложения.
 ///
-/// В отличие от Google, срок здесь не поджимает: токен Яндекса живёт около
-/// года, и еженедельно перевходить не приходится.
+/// **Почему код переписывается руками, а не ловится приёмником.** Яндекс
+/// выдаёт приложению постоянный адрес возврата
+/// `https://oauth.yandex.ru/verification_code` и сверяет с ним запрос. Просить
+/// возврата на локальный адрес можно, только если вписать его в настройки
+/// приложения, — а в консоли Яндекса это поле не всегда доступно, и попытка
+/// кончается ошибкой 400 «redirect_uri не совпадает с Callback URL».
+/// Поэтому идём штатным для настольных программ путём: Яндекс показывает
+/// код на странице, человек переносит его в окно входа. Одно лишнее действие
+/// в обмен на то, что схема работает у всех и без настроек.
+///
+/// Токен живёт около года — повторять это придётся нескоро.
 class YandexAuth {
   YandexAuth(this.client, {http.Client? httpClient})
       : _http = httpClient ?? http.Client();
@@ -44,31 +43,30 @@ class YandexAuth {
   static final _tokenEndpoint = Uri.parse('https://oauth.yandex.ru/token');
   static final _infoEndpoint = Uri.parse('https://login.yandex.ru/info');
 
+  /// Постоянный адрес возврата Яндекса: он же показывает код на экране.
+  static const verificationCode = 'https://oauth.yandex.ru/verification_code';
+
   void close() => _http.close();
 
-  /// Проводит вход целиком: поднимает приёмник, отдаёт адрес в [onUrl],
-  /// ждёт возврата и меняет код на токен.
-  ///
-  /// Возвращает токен и логин — по нему запись и подписана в списке.
-  /// Null — человек не уложился в срок или отказал.
-  Future<({String token, String login})?> authorize({
-    required Future<void> Function(Uri url) onUrl,
-    CancelableWait? cancel,
-  }) async {
-    final code = await awaitAuthCode(
-      port: client.port,
-      cancel: cancel,
-      start: (redirect) => onUrl(_authEndpoint.replace(queryParameters: {
+  /// Куда отправить человека за разрешением.
+  Uri get authorizeUrl => _authEndpoint.replace(queryParameters: {
         'response_type': 'code',
         'client_id': client.id,
-        'redirect_uri': redirect.toString(),
-      })),
-    );
-    if (code == null) return null;
+        'redirect_uri': verificationCode,
+      });
 
-    final tokens = await _exchange({
+  /// Меняет код со страницы Яндекса на токен.
+  ///
+  /// Возвращает токен и логин — по нему запись и подписана в списке.
+  Future<({String token, String login})> exchange(String code) async {
+    final clean = code.trim();
+    if (clean.isEmpty) {
+      throw NextcloudException('Код пустой — скопируйте его со страницы Яндекса');
+    }
+
+    final tokens = await _post({
       'grant_type': 'authorization_code',
-      'code': code,
+      'code': clean,
       'client_id': client.id,
       'client_secret': client.secret,
     });
@@ -80,7 +78,7 @@ class YandexAuth {
     return (token: token, login: await _login(token));
   }
 
-  Future<Map<String, dynamic>> _exchange(Map<String, String> form) async {
+  Future<Map<String, dynamic>> _post(Map<String, String> form) async {
     final res = await _http.post(
       _tokenEndpoint,
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -97,11 +95,13 @@ class YandexAuth {
     if (res.statusCode != 200) {
       final code = body['error'] ?? res.statusCode;
       final text = body['error_description'] as String?;
-      throw NextcloudException(
-        code == 'invalid_grant'
-            ? 'Яндекс не принял код — попробуйте войти заново.'
-            : 'Яндекс отказал ($code)${text == null ? '' : ': $text'}',
-      );
+      throw NextcloudException(switch (code) {
+        'invalid_grant' => 'Яндекс не принял код. Он одноразовый и живёт '
+            'считаные минуты — получите новый.',
+        'invalid_client' => 'Яндекс не узнал приложение. Проверьте '
+            'идентификатор и пароль приложения.',
+        _ => 'Яндекс отказал ($code)${text == null ? '' : ': $text'}',
+      });
     }
     return body;
   }

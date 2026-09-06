@@ -57,11 +57,11 @@ class AppState extends ChangeNotifier {
   /// Учётные данные приложения Яндекса из настроек.
   YandexClientId get yandexClient {
     final saved = _prefs.readYandexClient();
-    return YandexClientId(id: saved.id, secret: saved.secret, port: saved.port);
+    return YandexClientId(id: saved.id, secret: saved.secret);
   }
 
-  Future<void> saveYandexClient(String id, String secret, int port) async {
-    await _prefs.writeYandexClient(id, secret, port);
+  Future<void> saveYandexClient(String id, String secret) async {
+    await _prefs.writeYandexClient(id, secret);
     notifyListeners();
   }
 
