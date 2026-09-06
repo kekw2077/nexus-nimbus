@@ -53,13 +53,8 @@ Future<void> main() async {
   await app.restore();
 
   // Обновления поднимаются последними и в фоне: канал может быть недоступен,
-  // и ждать его на старте нечего. Первая проверка тихая — окно WinSparkle
-  // появится, только если обновление действительно есть.
+  // и ждать его на старте нечего. Проверку ведём сами и своим расписанием —
+  // окно с предложением рисует приложение, а не WinSparkle.
   await updater.init();
-  if (updater.autoCheck) {
-    unawaited(Future<void>.delayed(
-      const Duration(seconds: 4),
-      () => updater.check(inBackground: true),
-    ));
-  }
+  updater.startWatching();
 }

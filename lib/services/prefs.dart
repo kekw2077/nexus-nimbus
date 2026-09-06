@@ -22,6 +22,7 @@ class Prefs {
   static const _updateChannel = 'update.channel';
   static const _updateServer = 'update.server';
   static const _updateAuto = 'update.auto';
+  static const _updateSkip = 'update.skip';
   static const _vaultRoot = 'vault.root';
   static const _autoPush = 'edit.autopush';
   static const _syncEnabled = 'sync.enabled';
@@ -79,6 +80,16 @@ class Prefs {
   bool readAutoCheck() => _p.getBool(_updateAuto) ?? true;
 
   Future<void> writeAutoCheck(bool value) => _p.setBool(_updateAuto, value);
+
+  /// Версия, которую человек попросил не предлагать.
+  ///
+  /// Своя, а не та, что пишет WinSparkle в реестр: его отметка живёт вечно
+  /// и находится только руками — это давняя ловушка, записанная в STATUS.
+  /// Здесь она видна в настройках и снимается кнопкой.
+  String readSkippedVersion() => _p.getString(_updateSkip) ?? '';
+
+  Future<void> writeSkippedVersion(String version) =>
+      _p.setString(_updateSkip, version);
 
   // ------------------------------------------------------------ хранилище
 

@@ -394,6 +394,17 @@ void main() {
           DateTime.utc(2026, 9, 5, 18, 40, 0));
     });
 
+    test('список изменений достаётся из описания выпуска', () {
+      // Описание — кусок HTML; нам нужны строчки списка, которые туда
+      // кладёт release.ps1, а не разметка вокруг них.
+      final latest = releases.first;
+      expect(latest.notes, ['Корзина сервера', 'Папка хранилища']);
+    });
+
+    test('символьные ссылки в заметках возвращаются на место', () {
+      expect(releases.last.notes, ['Кавычки «ёлочки» и амперсанд &']);
+    });
+
     test('запись без установщика пропускается', () {
       // Черновик выпуска в канале ещё не на что скачивать.
       expect(releases.any((r) => r.version == '0.3.0'), isFalse);
@@ -603,6 +614,9 @@ const _appcastXml = '''<?xml version="1.0" encoding="utf-8"?>
       <title>Nexus Nimbus 0.1.0</title>
       <pubDate>Sat, 05 Sep 2026 13:02:00 +0000</pubDate>
       <sparkle:version>0.1.0</sparkle:version>
+      <description><![CDATA[
+        <ul><li>Кавычки &#171;ёлочки&#187; и амперсанд &amp;</li></ul>
+      ]]></description>
       <enclosure
         url="https://example.invalid/v0.1.0/NexusNimbus-Setup-0.1.0.exe"
         sparkle:version="0.1.0"
@@ -614,6 +628,13 @@ const _appcastXml = '''<?xml version="1.0" encoding="utf-8"?>
       <title>Nexus Nimbus 0.2.0</title>
       <pubDate>Sat, 05 Sep 2026 18:40:00 +0000</pubDate>
       <sparkle:version>0.2.0</sparkle:version>
+      <description><![CDATA[
+        <style>li{margin:5px 0;}</style>
+        <ul>
+          <li>Корзина сервера</li>
+          <li>Папка хранилища</li>
+        </ul>
+      ]]></description>
       <enclosure
         url="https://example.invalid/v0.2.0/NexusNimbus-Setup-0.2.0.exe"
         sparkle:version="0.2.0"

@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:xml/xml.dart';
 
 import 'prefs.dart';
+import 'win_sparkle.dart';
 
 /// Один выпуск из канала обновлений.
 class ReleaseEntry {
@@ -18,10 +19,14 @@ class ReleaseEntry {
     required this.installerUrl,
     this.publishedAt,
     this.size = 0,
+    this.notes = const [],
   });
 
   final String version;
   final String title;
+
+  /// Что изменилось — строками, как их пишет release.ps1.
+  final List<String> notes;
 
   /// Адрес установщика — его и открывают, когда хотят вернуться назад.
   final String installerUrl;
@@ -124,6 +129,26 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
     return env != null && env.trim().isNotEmpty;
   }
 
+  Timer? _schedule;
+
+  /// Заводит своё расписание проверок. Первая — через несколько секунд после
+  /// запуска: канал может быть недоступен, и держать из-за этого окно нечего.
+  void startWatching() {
+    _schedule?.cancel();
+    if (!autoCheck || !_ready) return;
+
+    _schedule = Timer.periodic(checkInterval, (_) => unawaited(findUpdate()));
+    unawaited(Future<void>.delayed(
+      const Duration(seconds: 4),
+      () => autoCheck ? findUpdate() : null,
+    ));
+  }
+
+  void stopWatching() {
+    _schedule?.cancel();
+    _schedule = null;
+  }
+
   Future<void> init() async {
     if (!Platform.isWindows) return;
     try {
@@ -139,9 +164,9 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
   Future<void> _applyFeed() async {
     try {
       await autoUpdater.setFeedURL(effectiveFeedUrl);
-      await autoUpdater.setScheduledCheckInterval(
-        autoCheck ? checkInterval.inSeconds : 0,
-      );
+      // Своё расписание WinSparkle выключаем: сработав, оно показало бы
+      // собственное окно поверх нашего. Проверять будем сами.
+      await autoUpdater.setScheduledCheckInterval(0);
     } catch (e) {
       _status = UpdateStatus.failed;
       _message = 'Не удалось настроить канал обновлений: $e';
@@ -208,11 +233,53 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
         installerUrl: url,
         publishedAt: _rfc822(_text(item, 'pubDate')),
         size: int.tryParse(enclosure.getAttribute('length') ?? '') ?? 0,
+        notes: _notes(_text(item, 'description')),
       ));
     }
 
     out.sort((a, b) => ReleaseEntry.compare(b.version, a.version));
     return out;
+  }
+
+  /// Список изменений из описания выпуска. Описание — это кусок HTML,
+  /// и разбирать его целиком незачем: release.ps1 пишет туда строчки
+  /// списка, их и достаём.
+  static List<String> _notes(String? description) {
+    if (description == null) return const [];
+    return RegExp(r'<li>(.*?)</li>', dotAll: true)
+        .allMatches(description)
+        .map((m) => _plain(m.group(1) ?? ''))
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  /// Снимает разметку и возвращает символьные ссылки на место.
+  ///
+  /// Числовые ссылки тоже: release.ps1 их не пишет, но канал можно поправить
+  /// и руками, а «Кавычки &#171;ёлочки&#187;» в окне обновления — не то,
+  /// что человек хотел прочитать.
+  static String _plain(String html) {
+    var text = html.replaceAll(RegExp(r'<[^>]*>'), '');
+
+    text = text.replaceAllMapped(
+      RegExp(r'&#(x[0-9a-fA-F]+|\d+);'),
+      (m) {
+        final raw = m.group(1)!;
+        final code = raw.startsWith('x') || raw.startsWith('X')
+            ? int.tryParse(raw.substring(1), radix: 16)
+            : int.tryParse(raw);
+        return code == null ? m.group(0)! : String.fromCharCode(code);
+      },
+    );
+
+    // Амперсанд последним: иначе «&amp;lt;» превратилось бы в «<».
+    return text
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&amp;', '&')
+        .trim();
   }
 
   /// Значение дочернего элемента без учёта пространства имён: в appcast
@@ -245,6 +312,90 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
       int.parse(m.group(5)!),
       int.parse(m.group(6)!),
     ).toLocal();
+  }
+
+  // ------------------------------------------------------- своя проверка
+
+  ReleaseEntry? _found;
+
+  /// Найденное обновление, которое ещё не предложили. Обнуляется, как только
+  /// окно показано: второй раз про ту же версию напоминать незачем.
+  ReleaseEntry? get found => _found;
+
+  String get skippedVersion => _prefs.readSkippedVersion();
+
+  Future<void> skip(String version) async {
+    await _prefs.writeSkippedVersion(version);
+    _found = null;
+    notifyListeners();
+  }
+
+  Future<void> unskip() async {
+    await _prefs.writeSkippedVersion('');
+    notifyListeners();
+  }
+
+  void forgetFound() {
+    if (_found == null) return;
+    _found = null;
+    notifyListeners();
+  }
+
+  /// Ищет выпуск новее установленного. Канал читаем сами, а не отдаём
+  /// WinSparkle: его окно нарисовано обычными органами Windows и мимо всего
+  /// оформления. Спрашивать будет наше окно, а ему остаётся скачивание
+  /// и сверка подписи.
+  Future<ReleaseEntry?> findUpdate({bool ignoreSkipped = false}) async {
+    _status = UpdateStatus.checking;
+    _message = null;
+    notifyListeners();
+
+    try {
+      final releases = await listReleases();
+      final skipped = _prefs.readSkippedVersion();
+
+      for (final release in releases) {
+        if (ReleaseEntry.compare(release.version, _currentVersion) <= 0) continue;
+        if (!ignoreSkipped && release.version == skipped) continue;
+
+        _found = release;
+        _availableVersion = release.version;
+        _status = UpdateStatus.available;
+        _message = 'Доступна версия ${release.version}';
+        notifyListeners();
+        return release;
+      }
+
+      _found = null;
+      _status = UpdateStatus.upToDate;
+      _message = 'Установлена последняя версия';
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _found = null;
+      _status = UpdateStatus.failed;
+      _message = '$e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Ставит найденное обновление. Скачивание и сверку подписи делает
+  /// WinSparkle — писать это самим значило бы обойти проверку, ради которой
+  /// заведён ключ.
+  Future<void> install() async {
+    if (!Platform.isWindows) return;
+    _found = null;
+
+    if (WinSparkle.checkAndInstall()) {
+      _status = UpdateStatus.downloaded;
+      _message = 'Скачиваем обновление…';
+      notifyListeners();
+      return;
+    }
+
+    // Обхода нет — отдаём пакету вместе с его собственным окном.
+    await check();
   }
 
   Future<void> setChannel(UpdateChannel value) async {
@@ -315,6 +466,7 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
 
   @override
   void dispose() {
+    stopWatching();
     autoUpdater.removeListener(this);
     super.dispose();
   }

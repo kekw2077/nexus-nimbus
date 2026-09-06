@@ -19,6 +19,7 @@ import '../ui/widgets/controls.dart';
 import '../ui/widgets/accounts_panel.dart';
 import '../ui/widgets/dialogs.dart';
 import '../ui/widgets/login_dialog.dart';
+import '../ui/widgets/update_dialog.dart';
 import '../ui/widgets/glass_panel.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -650,7 +651,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ? 'Проверяем…'
               : 'Проверить обновления',
           icon: Icons.system_update_alt_rounded,
-          onTap: () => updater.check(),
+          onTap: _checkNow,
         ),
         const SizedBox(width: 12),
         if (updater.message != null)
@@ -675,9 +676,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'если подпись не сойдётся, оно не установится.',
         style: NxType.caption.copyWith(color: p.faint, height: 1.45),
       ),
+      if (updater.skippedVersion.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: Text(
+              'Версия ${updater.skippedVersion} пропущена — про неё больше '
+              'не спрашиваем.',
+              style: NxType.caption.copyWith(color: p.faint, height: 1.45),
+            ),
+          ),
+          const SizedBox(width: 10),
+          NxGhostButton(
+            label: 'Вернуть',
+            icon: Icons.undo_rounded,
+            onTap: () async {
+              await updater.unskip();
+              if (mounted) setState(() {});
+            },
+          ),
+        ]),
+      ],
       const SizedBox(height: 16),
       _Releases(updater: updater),
     ]);
+  }
+
+  /// Проверка по кнопке. Пропущенную версию здесь показываем всё равно:
+  /// человек спросил сам, значит хочет знать.
+  Future<void> _checkNow() async {
+    final release = await updater.findUpdate(ignoreSkipped: true);
+    if (!mounted || release == null) return;
+    await showUpdate(context, updater: updater, release: release);
+    if (mounted) setState(() {});
   }
 }
 

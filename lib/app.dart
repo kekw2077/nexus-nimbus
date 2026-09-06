@@ -23,6 +23,7 @@ import 'ui/tokens.dart';
 import 'ui/widgets/dialogs.dart';
 import 'ui/widgets/accounts_panel.dart';
 import 'ui/widgets/nimbus_shell.dart';
+import 'ui/widgets/update_dialog.dart';
 import 'ui/widgets/window_chrome.dart';
 
 class NimbusApp extends StatelessWidget {
@@ -178,7 +179,9 @@ class _Connected extends StatelessWidget {
         for (var i = 0; i < sections.length && i < _digits.length; i++)
           SingleActivator(_digits[i], control: true): () => onSelect(sections[i]),
       },
-      child: _EditNotices(
+      child: _UpdateNotice(
+        updater: updater,
+        child: _EditNotices(
         session: session,
         child: NimbusShell(
         current: section,
@@ -231,9 +234,57 @@ class _Connected extends StatelessWidget {
             ),
           },
         ),
+        ),
       ),
     );
   }
+}
+
+/// Показывает окно с предложением обновиться, когда проверка что-то нашла.
+///
+/// Отдельным виджетом, а не внутри экрана: обновление касается приложения
+/// целиком, и от того, какой раздел открыт, оно не зависит.
+class _UpdateNotice extends StatefulWidget {
+  const _UpdateNotice({required this.updater, required this.child});
+  final UpdaterService updater;
+  final Widget child;
+
+  @override
+  State<_UpdateNotice> createState() => _UpdateNoticeState();
+}
+
+class _UpdateNoticeState extends State<_UpdateNotice> {
+  /// Версия, про которую уже спрашивали. Второй раз за запуск не спрашиваем:
+  /// назойливость хуже пропущенного обновления.
+  String? _asked;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.updater.addListener(_onUpdater);
+  }
+
+  @override
+  void dispose() {
+    widget.updater.removeListener(_onUpdater);
+    super.dispose();
+  }
+
+  void _onUpdater() {
+    if (!mounted) return;
+    final release = widget.updater.found;
+    if (release == null || release.version == _asked) return;
+    _asked = release.version;
+
+    // Уведомление может прийти посреди кадра — ждём, пока он дорисуется.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showUpdate(context, updater: widget.updater, release: release);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Показывает предложение отправить правку, когда автоотправка выключена.
