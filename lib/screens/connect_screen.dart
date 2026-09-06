@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_state.dart';
+import '../core/models/cloud_provider.dart';
 import '../services/login_flow.dart';
 import '../services/webdav_client.dart';
 import '../ui/theme.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets/aurora_background.dart';
 import '../ui/widgets/controls.dart';
+import '../ui/widgets/login_dialog.dart';
 import '../ui/widgets/glass_panel.dart';
 import '../ui/widgets/window_chrome.dart';
 
@@ -25,6 +27,12 @@ class ConnectScreen extends StatefulWidget {
 }
 
 class _ConnectScreenState extends State<ConnectScreen> {
+  /// Куда входим. Облака, которые клиент ещё не умеет, сюда не попадают:
+  /// выбрать то, что не заработает, было бы обманом.
+  CloudProvider _provider = CloudProvider.nextcloud;
+
+  static const _choices = CloudProvider.values;
+
   final _server = TextEditingController();
   final _login = TextEditingController();
   final _password = TextEditingController();
@@ -50,6 +58,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
   /// Приводит «cloud.example.com», «https://cloud.example.com/index.php/apps/files»
   /// и прочее, что можно скопировать из адресной строки, к базовому адресу.
   Uri? _parseServer() {
+    final fixed = _provider.fixedServer;
+    if (fixed != null) return fixed;
+
     var raw = _server.text.trim();
     if (raw.isEmpty) return null;
     if (!raw.contains('://')) raw = 'https://$raw';
@@ -87,6 +98,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         loginName: _login.text.trim(),
         appPassword: _password.text,
         allowBadCertificate: _trustCertificate,
+        provider: _provider,
       ));
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -126,7 +138,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         setState(() => _error = cancel.isCancelled ? null : 'Время на вход истекло');
         return;
       }
-      await widget.app.connect(account);
+      await widget.app.connect(account.copyWith(provider: _provider));
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -202,43 +214,77 @@ class _ConnectScreenState extends State<ConnectScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             GradientText('Nexus Nimbus', style: NxType.title.copyWith(fontSize: 21)),
             const SizedBox(height: 2),
-            Text('Файлы вашего Nextcloud',
+            Text('Файлы вашего облака',
                 style: NxType.caption.copyWith(color: p.sub)),
           ]),
         ),
       ]),
       const SizedBox(height: 26),
 
-      const SectionLabel('Сервер'),
+      const SectionLabel('Облако'),
       const SizedBox(height: 8),
-      NxField(controller: _server, hint: 'cloud.example.com'),
+      NxSegmented(
+        options: _choices.map((v) => v.label).toList(),
+        value: _provider.label,
+        onChanged: (v) => setState(() {
+          _provider = _choices.firstWhere((c) => c.label == v);
+          _error = null;
+        }),
+      ),
       const SizedBox(height: 16),
+
+      // У Google пароля нет — только разрешение в браузере, и вход у него
+      // свой. Отдельным окном, тем же, что открывается из настроек.
+      if (!_provider.hasPasswordLogin) ...[
+        Text(
+          'К Google Drive пароль не подходит: доступ выдаётся разрешением '
+          'в браузере, и только приложению, которое Google знает.',
+          style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.5),
+        ),
+        const SizedBox(height: 16),
+        GradientButton(
+          label: 'Настроить и войти',
+          icon: Icons.open_in_new_rounded,
+          onTap: () => showLogin(context, provider: _provider, app: widget.app),
+        ),
+      ] else ...[
+      if (_provider.fixedServer == null) ...[
+        const SectionLabel('Сервер'),
+        const SizedBox(height: 8),
+        NxField(controller: _server, hint: 'cloud.example.com'),
+        const SizedBox(height: 16),
+      ],
 
       const SectionLabel('Учётная запись'),
       const SizedBox(height: 8),
-      NxField(controller: _login, hint: 'Имя пользователя'),
+      NxField(
+        controller: _login,
+        hint: _provider == CloudProvider.yandex ? 'Имя на Яндексе' : 'Имя пользователя',
+      ),
       const SizedBox(height: 9),
       _PasswordField(controller: _password),
       const SizedBox(height: 9),
       Text(
-        'Пароль приложения создаётся на сервере: Настройки → Безопасность → '
-        '«Устройства и сеансы». Пароль от самой учётной записи вводить не нужно, '
-        'и он никуда не сохраняется.',
+        'Пароль приложения создаётся на стороне облака: ${_provider.passwordHint}. '
+        'Пароль от самой учётной записи вводить не нужно, и он никуда '
+        'не сохраняется.',
         style: NxType.caption.copyWith(color: p.faint, height: 1.45),
       ),
 
-      const SizedBox(height: 16),
-      Row(children: [
-        NxToggle(
-          value: _trustCertificate,
-          onChanged: (v) => setState(() => _trustCertificate = v),
-        ),
-        const SizedBox(width: 11),
-        Expanded(
-          child: Text('Доверять самоподписанному сертификату',
-              style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
-        ),
-      ]),
+      if (_provider.fixedServer == null) ...[
+        const SizedBox(height: 16),
+        Row(children: [
+          NxToggle(
+            value: _trustCertificate,
+            onChanged: (v) => setState(() => _trustCertificate = v),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text('Доверять самоподписанному сертификату',
+                style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
+          ),
+        ]),
+      ],
 
       if (_error != null) ...[
         const SizedBox(height: 18),
@@ -266,14 +312,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
                 ),
         ),
       ]),
-      const SizedBox(height: 12),
-      Center(
-        child: _TextAction(
-          label: 'Войти через браузер',
-          icon: Icons.open_in_new_rounded,
-          onTap: _busy ? null : _connectViaBrowser,
+      ],
+      // Вход через браузер — Login Flow v2, расширение Nextcloud.
+      if (_provider.hasBrowserLogin) ...[
+        const SizedBox(height: 12),
+        Center(
+          child: _TextAction(
+            label: 'Войти через браузер',
+            icon: Icons.open_in_new_rounded,
+            onTap: _busy ? null : _connectViaBrowser,
+          ),
         ),
-      ),
+      ],
     ]);
   }
 

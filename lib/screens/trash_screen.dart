@@ -308,27 +308,23 @@ class _TrashScreenState extends State<TrashScreen> {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => setState(_selection.clear),
-      child: Scrollbar(
-        thickness: 7,
-        radius: const Radius.circular(8),
-        child: ListView.builder(
-          padding: const EdgeInsets.all(10),
-          itemCount: items.length,
-          itemBuilder: (context, i) {
-            final item = items[i];
-            return _TrashRow(
-              item: item,
-              selected: _selection.contains(item.id),
-              onTap: () => setState(() {
-                _selection.contains(item.id)
-                    ? _selection.remove(item.id)
-                    : _selection.add(item.id);
-              }),
-              onRestore: () => _restore([item]),
-              onSecondaryTap: (at) => _menu(at, item),
-            );
-          },
-        ),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(10),
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return _TrashRow(
+            item: item,
+            selected: _selection.contains(item.id),
+            onTap: () => setState(() {
+              _selection.contains(item.id)
+                  ? _selection.remove(item.id)
+                  : _selection.add(item.id);
+            }),
+            onRestore: () => _restore([item]),
+            onSecondaryTap: (at) => _menu(at, item),
+          );
+        },
       ),
     );
   }

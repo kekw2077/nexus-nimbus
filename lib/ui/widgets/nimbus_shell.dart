@@ -306,22 +306,61 @@ class UsageMeter extends StatelessWidget {
 /// Заливка взята плотнее прототипной `var(--field)`: та почти прозрачна,
 /// и пятна авроры просвечивали сквозь подписи, съедая их читаемость.
 /// Здесь важнее текст, чем прозрачность.
-class SidebarCard extends StatelessWidget {
-  const SidebarCard({super.key, required this.children});
+class SidebarCard extends StatefulWidget {
+  const SidebarCard({super.key, required this.children, this.onTap, this.tooltip});
+
   final List<Widget> children;
+
+  /// Нажатие по всей карточке. Здесь живёт выбор учётной записи, поэтому
+  /// карточка подсвечивается под курсором — иначе про нажатие не догадаться.
+  final void Function(Offset globalPosition)? onTap;
+
+  final String? tooltip;
+
+  @override
+  State<SidebarCard> createState() => _SidebarCardState();
+}
+
+class _SidebarCardState extends State<SidebarCard> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
-    return Container(
+    final t = NxTheme.of(context);
+    final p = t.palette;
+    final live = widget.onTap != null;
+
+    Widget card = AnimatedContainer(
+      duration: NxMotion.hover,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: p.solid.withValues(alpha: 0.72),
+        color: p.solid.withValues(alpha: live && _hover ? 0.9 : 0.72),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: p.stroke),
+        border: Border.all(
+          color: live && _hover ? t.accent.a2.withValues(alpha: 0.55) : p.stroke,
+        ),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: widget.children,
+      ),
     );
+
+    if (!live) return card;
+
+    card = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (d) => widget.onTap!(d.globalPosition),
+        child: card,
+      ),
+    );
+
+    final tip = widget.tooltip;
+    return tip == null ? card : Tooltip(message: tip, child: card);
   }
 }
 

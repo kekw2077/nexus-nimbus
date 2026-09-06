@@ -4,12 +4,27 @@ import '../theme.dart';
 import '../tokens.dart';
 
 class MenuAction {
-  const MenuAction(this.label, this.icon, this.onSelected, {this.danger = false, this.enabled = true});
+  const MenuAction(
+    this.label,
+    this.icon,
+    this.onSelected, {
+    this.danger = false,
+    this.enabled = true,
+    this.hint,
+    this.selected = false,
+  });
+
   final String label;
   final IconData icon;
   final VoidCallback onSelected;
   final bool danger;
   final bool enabled;
+
+  /// Вторая строка под подписью: чем этот пункт отличается от соседей.
+  final String? hint;
+
+  /// Пункт, выбранный сейчас, — с галочкой и в цвете акцента.
+  final bool selected;
 }
 
 /// Разделитель в контекстном меню.
@@ -54,30 +69,57 @@ Future<void> showNimbusMenu(
           PopupMenuItem<MenuAction>(
             value: a,
             enabled: a.enabled,
-            height: 34,
+            height: a.hint == null ? 34 : 48,
             padding: const EdgeInsets.symmetric(horizontal: 13),
             child: Row(children: [
               Icon(
                 a.icon,
                 size: 15,
-                color: !a.enabled
-                    ? p.faint
-                    : a.danger
-                        ? NxPalette.danger
-                        : p.sub,
+                color: a.selected
+                    ? t.accent.a1
+                    : !a.enabled
+                        ? p.faint
+                        : a.danger
+                            ? NxPalette.danger
+                            : p.sub,
               ),
               const SizedBox(width: 11),
-              Text(
-                a.label,
-                style: NxType.label.copyWith(
-                  fontSize: 12.5,
-                  color: !a.enabled
-                      ? p.faint
-                      : a.danger
-                          ? NxPalette.danger
-                          : p.body,
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      a.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: NxType.label.copyWith(
+                        fontSize: 12.5,
+                        color: a.selected
+                            ? p.txt
+                            : !a.enabled
+                                ? p.faint
+                                : a.danger
+                                    ? NxPalette.danger
+                                    : p.body,
+                      ),
+                    ),
+                    if (a.hint != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        a.hint!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: NxType.caption.copyWith(color: p.faint, fontSize: 10.5),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+              if (a.selected) ...[
+                const SizedBox(width: 10),
+                Icon(Icons.check_rounded, size: 14, color: t.accent.a1),
+              ],
             ]),
           ),
     ],

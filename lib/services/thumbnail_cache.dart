@@ -5,7 +5,7 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
-import 'webdav_client.dart';
+import 'storage_backend.dart';
 
 /// Миниатюры с сервера: сначала память, потом диск, потом сеть.
 ///
@@ -15,7 +15,7 @@ import 'webdav_client.dart';
 class ThumbnailCache {
   ThumbnailCache(this._dav, this._dir);
 
-  WebDavClient _dav;
+  StorageBackend _dav;
   final Directory _dir;
 
   static const _memoryLimit = 400;
@@ -26,7 +26,7 @@ class ThumbnailCache {
   final Queue<Completer<void>> _waiting = Queue();
   int _busy = 0;
 
-  set client(WebDavClient value) {
+  set client(StorageBackend value) {
     _dav = value;
     _memory.clear();
   }

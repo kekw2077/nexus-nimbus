@@ -104,7 +104,22 @@ class _NxAppState extends State<NxApp> {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: _data.toMaterial(),
+          scrollBehavior: const _NoScrollbars(),
           home: Builder(builder: widget.builder),
         ),
       );
+}
+
+/// Прокрутка без полос.
+///
+/// На десктопе Material подставляет полосу прокрутки к каждому списку сам,
+/// и убрать её, вычеркнув Scrollbar из разметки, нельзя — она добавляется
+/// поведением, а не виджетом. Списки от этого прокручиваться не перестают:
+/// колесо, тачпад и клавиатура работают как работали.
+class _NoScrollbars extends MaterialScrollBehavior {
+  const _NoScrollbars();
+
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) =>
+      child;
 }

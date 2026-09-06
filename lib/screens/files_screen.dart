@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
-import 'package:desktop_drop/desktop_drop.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,17 +10,30 @@ import 'package:path/path.dart' as p;
 import '../core/format.dart';
 import '../core/models/remote_file.dart';
 import '../core/session.dart';
+import '../services/transfer_queue.dart';
 import '../ui/theme.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets/controls.dart';
 import '../ui/widgets/dialogs.dart';
+import '../ui/widgets/drag_out.dart';
 import '../ui/widgets/file_views.dart';
 import '../ui/widgets/glass_panel.dart';
 import '../ui/widgets/menu.dart';
+import '../ui/widgets/search_dialog.dart';
+import '../ui/widgets/share_dialog.dart';
+import '../ui/widgets/versions_dialog.dart';
 
 class FilesScreen extends StatefulWidget {
-  const FilesScreen({super.key, required this.session});
+  const FilesScreen({
+    super.key,
+    required this.session,
+    required this.onOpenTransfers,
+  });
+
   final Session session;
+
+  /// Уйти в раздел «Передачи» — по полосе под кнопками.
+  final VoidCallback onOpenTransfers;
 
   @override
   State<FilesScreen> createState() => _FilesScreenState();
@@ -74,29 +88,8 @@ class _FilesScreenState extends State<FilesScreen> {
     }
   }
 
-  void _toast(String message, {bool danger = false}) {
-    final p = NxTheme.of(context).palette;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
-        width: 520,
-        backgroundColor: p.solid,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(NxRadius.tile),
-          side: BorderSide(color: danger ? NxPalette.danger : p.stroke2),
-        ),
-        content: Row(children: [
-          Icon(danger ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
-              size: 16, color: danger ? NxPalette.danger : NxPalette.ok),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Text(message,
-                style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
-          ),
-        ]),
-      ));
-  }
+  void _toast(String message, {bool danger = false}) =>
+      showNxToast(context, message, danger: danger);
 
   void _tap(RemoteFile file, bool ctrl, bool shift) {
     if (shift && _anchor != null) {
@@ -157,6 +150,29 @@ class _FilesScreenState extends State<FilesScreen> {
     await _guard(s.deleteSelected);
   }
 
+  /// История версий одного файла. Восстановление меняет содержимое на
+  /// сервере, поэтому после него папку перечитываем.
+  Future<void> _versions(RemoteFile file) async {
+    final restored = await showVersions(context, session: s, file: file);
+    if (restored && mounted) await _guard(s.refresh);
+  }
+
+  /// Публичные ссылки. Список менялся — перечитываем папку: признак
+  /// «расшарено» приходит вместе со свойствами записи.
+  /// Поиск по всему дереву. Поле в шапке фильтрует открытую папку — этого
+  /// хватает в девяти случаях из десяти, а на десятый есть это окно.
+  Future<void> _searchServer() async {
+    if (!s.account.provider.hasSearch) return;
+    final go = await showServerSearch(context, session: s, initial: s.filter);
+    if (go == null || !mounted) return;
+    await _guard(() => s.open(go));
+  }
+
+  Future<void> _share(RemoteFile file) async {
+    final changed = await showShareLinks(context, session: s, file: file);
+    if (changed && mounted) await _guard(s.refresh);
+  }
+
   Future<void> _pickAndUpload({bool folder = false}) async {
     if (folder) {
       final dir = await getDirectoryPath(confirmButtonText: 'Загрузить папку');
@@ -179,7 +195,10 @@ class _FilesScreenState extends State<FilesScreen> {
     final files = s.selectedFiles;
     final single = files.length == 1;
     final presence = s.vault.presenceOf(file);
-    final hasLocal = files.any((f) => !f.isDir && s.vault.presenceOf(f).isLocal);
+    final hasLocal = files.any((f) =>
+        f.isDir ? s.vault.isPinnedDir(f.path) : s.vault.presenceOf(f).isLocal);
+    final canPin = files.any((f) => s.vault.presenceOf(f) != Presence.pinned);
+    final canUnpin = files.any((f) => s.vault.presenceOf(f) == Presence.pinned);
 
     showNimbusMenu(context, at, [
       if (single && file.isDir)
@@ -192,11 +211,17 @@ class _FilesScreenState extends State<FilesScreen> {
         () => _guard(() => s.download(files)),
       ),
       MenuAction(
-        'Держать локально',
+        files.any((f) => f.isDir) ? 'Держать локально и синхронизировать' : 'Держать локально',
         Icons.push_pin_rounded,
         () => _guard(() => s.setPinned(files, true)),
-        enabled: files.any((f) => !f.isDir && s.vault.presenceOf(f) != Presence.pinned),
+        enabled: canPin,
       ),
+      if (canUnpin)
+        MenuAction(
+          'Не держать локально',
+          Icons.push_pin_outlined,
+          () => _guard(() => s.setPinned(files, false)),
+        ),
       MenuAction(
         'Освободить место',
         Icons.cloud_off_rounded,
@@ -206,6 +231,15 @@ class _FilesScreenState extends State<FilesScreen> {
       if (presence == Presence.dirty || presence == Presence.conflict)
         MenuAction('Отправить мои правки', Icons.upload_rounded,
             () => _guard(() => s.pushLocalChanges(file))),
+      if (s.account.provider.hasFavorites) ...[
+        menuSeparator,
+        if (files.every((f) => f.favorite))
+          MenuAction('Убрать из избранного', Icons.star_border_rounded,
+              () => _guard(() => s.setFavorite(files, false)))
+        else
+          MenuAction('В избранное', Icons.star_rounded,
+              () => _guard(() => s.setFavorite(files, true))),
+      ],
       menuSeparator,
       if (single)
         MenuAction('Переименовать', Icons.drive_file_rename_outline_rounded,
@@ -214,6 +248,15 @@ class _FilesScreenState extends State<FilesScreen> {
         MenuAction('Показать в Проводнике', Icons.folder_special_rounded,
             () => _guard(() => s.revealInExplorer(file)),
             enabled: presence.isLocal),
+      if (single && s.account.provider.hasShares)
+        MenuAction(
+          file.isShared ? 'Ссылки на это…' : 'Поделиться ссылкой…',
+          file.isShared ? Icons.link_rounded : Icons.link_outlined,
+          () => _share(file),
+        ),
+      if (single && !file.isDir && s.account.provider.hasVersions)
+        MenuAction('Версии файла…', Icons.history_rounded, () => _versions(file),
+            enabled: file.fileId != null),
       if (single)
         MenuAction('Открыть на сервере', Icons.language_rounded,
             () => _guard(() => s.openInBrowser(file))),
@@ -232,13 +275,46 @@ class _FilesScreenState extends State<FilesScreen> {
           () => _pickAndUpload(folder: true)),
       menuSeparator,
       MenuAction('Обновить', Icons.refresh_rounded, () => _guard(s.refresh)),
+      MenuAction('Синхронизировать закреплённое', Icons.sync_rounded,
+          () => _guard(s.sync.syncNow),
+          enabled: s.vault.pinnedDirs.isNotEmpty),
     ]);
   }
 
-  Future<void> _onDrop(DropDoneDetails details, String? targetFolder) async {
-    final paths = details.files.map((f) => f.path).toList();
-    if (paths.isEmpty) return;
+  /// Пути к тому, что бросили в окно. Проводник отдаёт их по одному
+  /// обратным вызовом на элемент, поэтому собираем по очереди.
+  Future<List<String>> _droppedPaths(PerformDropEvent event) async {
+    final out = <String>[];
+    for (final item in event.session.items) {
+      final reader = item.dataReader;
+      if (reader == null) continue;
+
+      final done = Completer<void>();
+      final progress = reader.getValue<Uri>(
+        Formats.fileUri,
+        (uri) {
+          if (uri != null && uri.isScheme('file')) {
+            out.add(uri.toFilePath(windows: Platform.isWindows));
+          }
+          if (!done.isCompleted) done.complete();
+        },
+        onError: (_) {
+          if (!done.isCompleted) done.complete();
+        },
+      );
+      // null означает, что этот элемент такой формат не предлагает —
+      // ждать нечего, обратный вызов не придёт.
+      if (progress == null) continue;
+      await done.future;
+    }
+    return out;
+  }
+
+  Future<void> _onDrop(PerformDropEvent event, String? targetFolder) async {
+    final paths = await _droppedPaths(event);
+    if (paths.isEmpty || !mounted) return;
     await _guard(() => s.uploadPaths(paths, into: targetFolder ?? s.path));
+    if (!mounted) return;
     _toast('Добавлено в очередь: ${paths.length} '
         '${plural(paths.length, 'объект', 'объекта', 'объектов')}');
   }
@@ -253,6 +329,7 @@ class _FilesScreenState extends State<FilesScreen> {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyA, control: true): s.selectAll,
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true): _searchServer,
         const SingleActivator(LogicalKeyboardKey.f5): () => _guard(s.refresh),
         const SingleActivator(LogicalKeyboardKey.delete): _delete,
         const SingleActivator(LogicalKeyboardKey.escape): s.clearSelection,
@@ -273,6 +350,8 @@ class _FilesScreenState extends State<FilesScreen> {
             onUpload: () => _pickAndUpload(),
             onUploadFolder: () => _pickAndUpload(folder: true),
             onRefresh: () => _guard(s.refresh),
+            onSearchServer: _searchServer,
+            onOpenTransfers: widget.onOpenTransfers,
           ),
           if (s.selection.isNotEmpty)
             _SelectionBar(
@@ -289,19 +368,23 @@ class _FilesScreenState extends State<FilesScreen> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 6, 18, 16),
-              child: DropTarget(
-                onDragEntered: (_) => setState(() => _dragOverBody = true),
-                onDragExited: (_) => setState(() {
+              child: DropRegion(
+                formats: const [Formats.fileUri],
+                hitTestBehavior: HitTestBehavior.opaque,
+                onDropOver: (_) {
+                  if (!_dragOverBody) setState(() => _dragOverBody = true);
+                  return DropOperation.copy;
+                },
+                onDropLeave: (_) => setState(() {
                   _dragOverBody = false;
                   _dragOverFolder = null;
                 }),
-                onDragDone: (d) {
-                  final target = _dragOverFolder;
+                onPerformDrop: (event) async {
                   setState(() {
                     _dragOverBody = false;
                     _dragOverFolder = null;
                   });
-                  _onDrop(d, target);
+                  await _onDrop(event, null);
                 },
                 child: GlassPanel(
                   radius: NxRadius.panel,
@@ -415,20 +498,20 @@ class _FilesScreenState extends State<FilesScreen> {
         ),
       ),
       Expanded(
-        child: Scrollbar(
-          thickness: 7,
-          radius: const Radius.circular(8),
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(8, 2, 8, 10),
-            itemCount: items.length,
-            itemExtent: FileRow.height + 2,
-            itemBuilder: (context, i) {
-              final f = items[i];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: _wrapFolderTarget(
-                  f,
-                  FileRow(
+        child: ListView.builder(
+          padding: const EdgeInsets.fromLTRB(8, 2, 8, 10),
+          itemCount: items.length,
+          itemExtent: FileRow.height + 2,
+          itemBuilder: (context, i) {
+            final f = items[i];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: _wrapFolderTarget(
+                f,
+                DragOut(
+                  session: s,
+                  file: f,
+                  child: FileRow(
                     file: f,
                     presence: s.vault.presenceOf(f),
                     selected: s.selection.contains(f.path),
@@ -441,34 +524,35 @@ class _FilesScreenState extends State<FilesScreen> {
                           s.vault.presenceOf(f) != Presence.pinned,
                         )),
                     dropHighlight: _dragOverFolder == f.path,
+                    transfer: s.transfers.activeFor(f.path),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     ]);
   }
 
   Widget _grid(List<RemoteFile> items) {
-    return Scrollbar(
-      thickness: 7,
-      radius: const Radius.circular(8),
-      child: GridView.builder(
-        padding: const EdgeInsets.all(14),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 148,
-          mainAxisExtent: 156,
-          crossAxisSpacing: 6,
-          mainAxisSpacing: 6,
-        ),
-        itemCount: items.length,
-        itemBuilder: (context, i) {
-          final f = items[i];
-          return _wrapFolderTarget(
-            f,
-            FileTile(
+    return GridView.builder(
+      padding: const EdgeInsets.all(14),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 148,
+        mainAxisExtent: 156,
+        crossAxisSpacing: 6,
+        mainAxisSpacing: 6,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final f = items[i];
+        return _wrapFolderTarget(
+          f,
+          DragOut(
+            session: s,
+            file: f,
+            child: FileTile(
               file: f,
               presence: s.vault.presenceOf(f),
               selected: s.selection.contains(f.path),
@@ -477,10 +561,11 @@ class _FilesScreenState extends State<FilesScreen> {
               onDoubleTap: () => _activate(f),
               onSecondaryTap: (at) => _contextMenu(at, f),
               dropHighlight: _dragOverFolder == f.path,
+              transfer: s.transfers.activeFor(f.path),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -488,12 +573,26 @@ class _FilesScreenState extends State<FilesScreen> {
   /// прямо в неё, не заходя внутрь.
   Widget _wrapFolderTarget(RemoteFile file, Widget child) {
     if (!file.isDir) return child;
-    return MouseRegion(
-      onEnter: (_) {
-        if (_dragOverBody) setState(() => _dragOverFolder = file.path);
+    // Вложенная область приёма перехватывает бросок раньше внешней —
+    // так файл попадает в папку под курсором, а не в открытую.
+    return DropRegion(
+      formats: const [Formats.fileUri],
+      hitTestBehavior: HitTestBehavior.opaque,
+      onDropOver: (_) {
+        if (_dragOverFolder != file.path) {
+          setState(() => _dragOverFolder = file.path);
+        }
+        return DropOperation.copy;
       },
-      onExit: (_) {
+      onDropLeave: (_) {
         if (_dragOverFolder == file.path) setState(() => _dragOverFolder = null);
+      },
+      onPerformDrop: (event) async {
+        setState(() {
+          _dragOverBody = false;
+          _dragOverFolder = null;
+        });
+        await _onDrop(event, file.path);
       },
       child: child,
     );
@@ -506,6 +605,8 @@ class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.session,
     required this.controller,
+    required this.onSearchServer,
+    required this.onOpenTransfers,
     required this.onNewFolder,
     required this.onUpload,
     required this.onUploadFolder,
@@ -514,6 +615,8 @@ class _Toolbar extends StatelessWidget {
 
   final Session session;
   final TextEditingController controller;
+  final VoidCallback onSearchServer;
+  final VoidCallback onOpenTransfers;
   final VoidCallback onNewFolder, onUpload, onUploadFolder, onRefresh;
 
   @override
@@ -544,7 +647,21 @@ class _Toolbar extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(child: _Breadcrumbs(session: s)),
           const SizedBox(width: 12),
-          SizedBox(width: 210, child: _Search(controller: controller, session: s)),
+          SizedBox(
+            width: 210,
+            child: _Search(
+              controller: controller,
+              session: s,
+              onSearchServer: onSearchServer,
+            ),
+          ),
+          if (s.account.provider.hasSearch) ...[
+            const SizedBox(width: 4),
+            _IconAction(
+                icon: Icons.travel_explore_rounded,
+                tooltip: 'Искать по всему серверу (Ctrl F)',
+                onTap: onSearchServer),
+          ],
           const SizedBox(width: 8),
           _IconAction(
               icon: Icons.refresh_rounded,
@@ -578,6 +695,10 @@ class _Toolbar extends StatelessWidget {
             style: NxType.numeric.copyWith(color: p.faint, fontSize: 11),
           ),
         ]),
+        if (s.transfers.activeCount > 0) ...[
+          const SizedBox(height: 10),
+          _TransferStrip(queue: s.transfers, onOpen: onOpenTransfers),
+        ],
       ]),
     );
   }
@@ -675,10 +796,105 @@ class _CrumbState extends State<_Crumb> {
   }
 }
 
+/// Что передаётся прямо сейчас — полосой под кнопками, не уходя в «Передачи».
+///
+/// Появляется, только пока очередь не пуста: постоянная пустая полоса
+/// съедала бы строку у списка файлов и ничего не сообщала.
+class _TransferStrip extends StatefulWidget {
+  const _TransferStrip({required this.queue, required this.onOpen});
+  final TransferQueue queue;
+  final VoidCallback onOpen;
+
+  @override
+  State<_TransferStrip> createState() => _TransferStripState();
+}
+
+class _TransferStripState extends State<_TransferStrip> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = NxTheme.of(context);
+    final p = t.palette;
+    final q = widget.queue;
+
+    final total = q.totalBytes;
+    final size = total > 0
+        ? '${formatBytes(q.doneBytes)} из ${formatBytes(total)}'
+        : 'считаем объём…';
+
+    final right = <String>[];
+    final speed = q.bytesPerSecond;
+    if (speed > 0) right.add(formatSpeed(speed));
+    final left = q.remaining;
+    if (left != null && left > Duration.zero) {
+      right.add('осталось ${formatDuration(left)}');
+    }
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onOpen,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(13, 9, 9, 10),
+          decoration: BoxDecoration(
+            color: _hover ? p.hover : p.field,
+            borderRadius: BorderRadius.circular(NxRadius.tile),
+            border: Border.all(color: p.stroke),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Icon(Icons.swap_vert_rounded, size: 15, color: t.accent.a1),
+              const SizedBox(width: 10),
+              Text(
+                'Передаётся ${q.activeCount} '
+                '${plural(q.activeCount, 'файл', 'файла', 'файлов')}',
+                style: NxType.label.copyWith(color: p.txt, fontSize: 12),
+              ),
+              const SizedBox(width: 10),
+              Text(size, style: NxType.numeric.copyWith(color: p.sub, fontSize: 11)),
+              const Spacer(),
+              if (right.isNotEmpty)
+                Text(right.join(' · '),
+                    style: NxType.numeric.copyWith(color: p.faint, fontSize: 11)),
+              const SizedBox(width: 12),
+              Text('${(q.overallFraction * 100).round()}%',
+                  style: NxType.numeric.copyWith(color: t.accent.a1, fontSize: 11)),
+              const SizedBox(width: 10),
+              Tooltip(
+                message: 'Отменить всё',
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: q.cancelAll,
+                    child: Icon(Icons.close_rounded, size: 15, color: p.sub),
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            NxProgressLine(fraction: q.overallFraction, height: 3),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 class _Search extends StatelessWidget {
-  const _Search({required this.controller, required this.session});
+  const _Search({
+    required this.controller,
+    required this.session,
+    required this.onSearchServer,
+  });
+
   final TextEditingController controller;
   final Session session;
+
+  /// Enter в поле фильтра — «этого мало, ищи везде».
+  final VoidCallback onSearchServer;
 
   @override
   Widget build(BuildContext context) {
@@ -689,6 +905,7 @@ class _Search extends StatelessWidget {
       child: TextField(
         controller: controller,
         onChanged: session.setFilter,
+        onSubmitted: (_) => onSearchServer(),
         style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5),
         decoration: InputDecoration(
           isDense: true,

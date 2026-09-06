@@ -87,19 +87,15 @@ class LocalScreen extends StatelessWidget {
                       ]),
                     ),
                   )
-                : Scrollbar(
-                    thickness: 7,
-                    radius: const Radius.circular(8),
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(10),
-                      itemCount: entries.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 3),
-                      itemBuilder: (context, i) => _EntryRow(
-                        entry: entries[i],
-                        session: session,
-                      ),
-                    ),
+                : ListView.separated(
+                  padding: const EdgeInsets.all(10),
+                  itemCount: entries.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 3),
+                  itemBuilder: (context, i) => _EntryRow(
+                    entry: entries[i],
+                    session: session,
                   ),
+                ),
           ),
         ),
       ]),

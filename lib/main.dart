@@ -7,6 +7,7 @@ import 'app.dart';
 import 'core/app_state.dart';
 import 'services/credentials_store.dart';
 import 'services/prefs.dart';
+import 'services/tray_service.dart';
 import 'services/updater.dart';
 import 'services/window_state.dart';
 
@@ -39,8 +40,13 @@ Future<void> main() async {
 
   final app = AppState(CredentialsStore(), prefs);
   final updater = UpdaterService(prefs);
+  final tray = TrayService(prefs, app);
 
-  runApp(NimbusApp(app: app, prefs: prefs, updater: updater));
+  runApp(NimbusApp(app: app, prefs: prefs, updater: updater, tray: tray));
+
+  // Трей поднимается после первого кадра: значок, автозапуск и горячая
+  // клавиша — вещи полезные, но окно из-за них ждать нечего.
+  unawaited(tray.init());
 
   // Восстановление сессии идёт уже после первого кадра — окно появляется
   // мгновенно, а не после ответа сервера.

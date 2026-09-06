@@ -267,11 +267,14 @@ class _GradientButtonState extends State<GradientButton> {
 
 /// Поле ввода в стиле EVS: подложка --field, рамка --stroke.
 class NxField extends StatelessWidget {
-  const NxField({super.key, required this.controller, this.hint, this.lines = 1, this.mono = false, this.radius = 16, this.fontSize = 13.5});
+  const NxField({super.key, required this.controller, this.hint, this.lines = 1, this.mono = false, this.obscure = false, this.radius = 16, this.fontSize = 13.5});
   final TextEditingController controller;
   final String? hint;
   final int lines;
   final bool mono;
+
+  /// Прятать ввод точками — для паролей.
+  final bool obscure;
   final double radius, fontSize;
 
   @override
@@ -279,7 +282,8 @@ class NxField extends StatelessWidget {
     final p = NxTheme.of(context).palette;
     return TextField(
       controller: controller,
-      maxLines: lines,
+      maxLines: obscure ? 1 : lines,
+      obscureText: obscure,
       style: (mono ? NxType.numeric : NxType.bodyText).copyWith(color: p.body, fontSize: fontSize, height: 1.5),
       decoration: InputDecoration(
         hintText: hint,
@@ -383,6 +387,33 @@ class _NxGhostButtonState extends State<NxGhostButton> {
 /// Значок в акцентном градиенте со свечением — логотип, аватар, метка.
 /// В прототипе у него `box-shadow: var(--glow)`, то самое мягкое пятно
 /// вокруг, которого не хватало.
+/// Полоска прогресса. Одна на всё приложение: и под строкой файла в списке,
+/// и в очереди передач — чтобы «идёт передача» выглядело одинаково везде.
+class NxProgressLine extends StatelessWidget {
+  const NxProgressLine({super.key, required this.fraction, this.height = 4});
+
+  final double fraction;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = NxTheme.of(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(height),
+      child: SizedBox(
+        height: height,
+        child: Stack(children: [
+          ColoredBox(color: t.palette.chip, child: const SizedBox.expand()),
+          FractionallySizedBox(
+            widthFactor: fraction.clamp(0.0, 1.0),
+            child: DecoratedBox(decoration: BoxDecoration(gradient: t.accent.badge)),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 class NxBadge extends StatelessWidget {
   const NxBadge({
     super.key,

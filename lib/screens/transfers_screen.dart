@@ -13,6 +13,25 @@ class TransfersScreen extends StatelessWidget {
   const TransfersScreen({super.key, required this.session});
   final Session session;
 
+  /// Сводка по всей очереди — та же тройка, что и у каждой строки:
+  /// сколько сделано, как быстро идёт, сколько осталось ждать.
+  String _summary(TransferQueue q) {
+    if (q.activeCount == 0) return 'Очередь пуста';
+
+    final parts = <String>[
+      'Активных: ${q.activeCount}',
+      '${(q.overallFraction * 100).round()}%',
+    ];
+    final speed = q.bytesPerSecond;
+    if (speed > 0) parts.add(formatSpeed(speed));
+
+    final left = q.remaining;
+    if (left != null && left > Duration.zero) {
+      parts.add('осталось ${formatDuration(left)}');
+    }
+    return parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = NxTheme.of(context);
@@ -28,12 +47,7 @@ class TransfersScreen extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               GradientText('Передачи', style: NxType.title),
               const SizedBox(height: 3),
-              Text(
-                q.activeCount == 0
-                    ? 'Очередь пуста'
-                    : 'Активных: ${q.activeCount} · ${(q.overallFraction * 100).round()}%',
-                style: NxType.caption.copyWith(color: p.sub),
-              ),
+              Text(_summary(q), style: NxType.caption.copyWith(color: p.sub)),
             ]),
           ),
           if (q.activeCount > 0)
@@ -63,17 +77,13 @@ class TransfersScreen extends StatelessWidget {
                           style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5)),
                     ]),
                   )
-                : Scrollbar(
-                    thickness: 7,
-                    radius: const Radius.circular(8),
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(10),
-                      itemCount: tasks.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 4),
-                      itemBuilder: (context, i) =>
-                          _TaskRow(task: tasks[i], onCancel: () => q.cancelTask(tasks[i])),
-                    ),
-                  ),
+                : ListView.separated(
+                  padding: const EdgeInsets.all(10),
+                  itemCount: tasks.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 4),
+                  itemBuilder: (context, i) =>
+                      _TaskRow(task: tasks[i], onCancel: () => q.cancelTask(tasks[i])),
+                ),
           ),
         ),
       ]),
@@ -86,29 +96,67 @@ class _TaskRow extends StatelessWidget {
   final TransferTask task;
   final VoidCallback onCancel;
 
+  /// Правая подпись в первой строке: у идущей передачи — проценты,
+  /// у остальных — чем всё кончилось.
+  String get _headline => switch (task.state) {
+        TransferState.queued => 'В очереди',
+        TransferState.running => '${(task.fraction * 100).round()}%',
+        TransferState.done =>
+          task.kind == TransferKind.download ? 'Скачан' : 'Загружен',
+        TransferState.failed => task.error ?? 'Ошибка',
+        TransferState.cancelled => 'Отменено',
+      };
+
+  /// Нижняя строка: слева объём, справа скорость и оценка остатка.
+  /// У законченного объём и средняя скорость — по ним видно, во что
+  /// обошлась передача.
+  (String, String) get _stats {
+    if (task.state == TransferState.running) {
+      final size = task.total > 0
+          ? '${formatBytes(task.done)} из ${formatBytes(task.total)}'
+          : formatBytes(task.done);
+
+      final right = <String>[];
+      final speed = task.bytesPerSecond;
+      if (speed > 0) right.add(formatSpeed(speed));
+      final left = task.remaining;
+      if (left != null && left > Duration.zero) {
+        right.add('осталось ${formatDuration(left)}');
+      }
+      // Скорости ещё нет — первые полсекунды замерять нечего.
+      return (size, right.isEmpty ? 'считаем скорость…' : right.join(' · '));
+    }
+
+    if (task.state == TransferState.done) {
+      final average = task.averageSpeed;
+      return (
+        formatBytes(task.total),
+        average > 0 ? 'в среднем ${formatSpeed(average)}' : ''
+      );
+    }
+    return (task.total > 0 ? formatBytes(task.total) : '', '');
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = NxTheme.of(context);
     final p = t.palette;
 
-    final (icon, color, note) = switch (task.state) {
-      TransferState.queued => (Icons.schedule_rounded, p.faint, 'В очереди'),
+    final (icon, color) = switch (task.state) {
+      TransferState.queued => (Icons.schedule_rounded, p.faint),
       TransferState.running => (
           task.kind == TransferKind.download
               ? Icons.download_rounded
               : Icons.upload_rounded,
-          t.accent.a1,
-          '${formatBytes(task.done)} из ${formatBytes(task.total)}'
+          t.accent.a1
         ),
-      TransferState.done => (
-          Icons.check_circle_rounded,
-          NxPalette.ok,
-          '${task.kind == TransferKind.download ? 'Скачан' : 'Загружен'} · '
-              '${formatBytes(task.total)}'
-        ),
-      TransferState.failed => (Icons.error_outline_rounded, NxPalette.danger, task.error ?? 'Ошибка'),
-      TransferState.cancelled => (Icons.cancel_outlined, p.faint, 'Отменено'),
+      TransferState.done => (Icons.check_circle_rounded, NxPalette.ok),
+      TransferState.failed => (Icons.error_outline_rounded, NxPalette.danger),
+      TransferState.cancelled => (Icons.cancel_outlined, p.faint),
     };
+
+    final failed = task.state == TransferState.failed;
+    final (statsLeft, statsRight) = _stats;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
@@ -132,28 +180,30 @@ class _TaskRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(note,
-                  style: NxType.numeric.copyWith(
-                      color: task.state == TransferState.failed ? NxPalette.danger : p.sub,
-                      fontSize: 10.5)),
+              Text(
+                _headline,
+                style: NxType.numeric.copyWith(
+                  color: failed ? NxPalette.danger : p.sub,
+                  fontSize: 10.5,
+                ),
+              ),
             ]),
             if (task.isActive) ...[
               const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: SizedBox(
-                  height: 4,
-                  child: Stack(children: [
-                    ColoredBox(color: p.chip, child: const SizedBox.expand()),
-                    FractionallySizedBox(
-                      widthFactor: task.fraction,
-                      child: DecoratedBox(decoration: BoxDecoration(gradient: t.accent.badge)),
-                    ),
-                  ]),
-                ),
-              ),
-            ] else ...[
-              const SizedBox(height: 4),
+              NxProgressLine(fraction: task.fraction),
+            ],
+            if (statsLeft.isNotEmpty || statsRight.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(children: [
+                Text(statsLeft,
+                    style: NxType.numeric.copyWith(color: p.sub, fontSize: 10.5)),
+                const Spacer(),
+                Text(statsRight,
+                    style: NxType.numeric.copyWith(color: p.faint, fontSize: 10.5)),
+              ]),
+            ],
+            if (!task.isActive) ...[
+              const SizedBox(height: 3),
               Text(
                 task.remotePath,
                 maxLines: 1,
@@ -180,4 +230,3 @@ class _TaskRow extends StatelessWidget {
     );
   }
 }
-

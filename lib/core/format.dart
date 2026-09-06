@@ -25,6 +25,25 @@ String plural(int n, String one, String few, String many) {
 
 String formatSpeed(int bytesPerSecond) => '${formatBytes(bytesPerSecond)}/с';
 
+/// Длительность коротко, для оценки «сколько осталось». Секунды у минут
+/// показываем, только пока минут меньше десяти: дальше эта точность всё
+/// равно ложная — скорость плавает сильнее, чем эти секунды значат.
+String formatDuration(Duration d) {
+  final total = d.inSeconds < 1 ? 1 : d.inSeconds;
+  if (total < 60) return '$total с';
+
+  final minutes = total ~/ 60;
+  if (minutes < 10) {
+    final seconds = total % 60;
+    return seconds == 0 ? '$minutes мин' : '$minutes мин $seconds с';
+  }
+  if (minutes < 60) return '$minutes мин';
+
+  final hours = minutes ~/ 60;
+  final rest = minutes % 60;
+  return rest == 0 ? '$hours ч' : '$hours ч $rest мин';
+}
+
 const _months = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн',
   'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',

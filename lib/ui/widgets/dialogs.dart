@@ -5,6 +5,52 @@ import '../tokens.dart';
 import 'controls.dart';
 import 'glass_panel.dart';
 
+/// Всплывающая подсказка внизу окна: подтверждение действия, ошибка,
+/// предложение отправить правку. Одна на всё приложение, чтобы такие
+/// сообщения выглядели одинаково откуда бы они ни пришли.
+void showNxToast(
+  BuildContext context,
+  String message, {
+  bool danger = false,
+  IconData? icon,
+  String? actionLabel,
+  VoidCallback? onAction,
+  Duration duration = const Duration(seconds: 4),
+}) {
+  final p = NxTheme.of(context).palette;
+  final accent = NxTheme.of(context).accent;
+  final mark = icon ??
+      (danger ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded);
+
+  ScaffoldMessenger.of(context)
+    ..clearSnackBars()
+    ..showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      width: 520,
+      duration: duration,
+      backgroundColor: p.solid,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(NxRadius.tile),
+        side: BorderSide(color: danger ? NxPalette.danger : p.stroke2),
+      ),
+      action: actionLabel == null || onAction == null
+          ? null
+          : SnackBarAction(
+              label: actionLabel,
+              textColor: accent.a2,
+              onPressed: onAction,
+            ),
+      content: Row(children: [
+        Icon(mark, size: 16, color: danger ? NxPalette.danger : NxPalette.ok),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Text(message,
+              style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
+        ),
+      ]),
+    ));
+}
+
 /// Диалог с одним текстовым полем: новая папка, переименование.
 /// Возвращает null, если отменили.
 Future<String?> askText(

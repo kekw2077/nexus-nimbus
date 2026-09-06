@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/models/remote_file.dart';
+import 'storage_backend.dart';
 import 'vault.dart';
 import 'webdav_client.dart';
 
@@ -38,11 +39,76 @@ class TransferTask {
   TransferState state = TransferState.queued;
   String? error;
 
+  DateTime? startedAt;
+  DateTime? finishedAt;
+
+  /// Окно замера скорости. Прогресс приходит на каждый чанк, а по чанку
+  /// скорость считать нельзя: получится скорость сети за одну миллисекунду,
+  /// и цифра на экране будет мигать вместо того, чтобы что-то значить.
+  static const _window = Duration(milliseconds: 400);
+
+  /// Замеры перестали приходить — передача встала, и прежняя цифра врёт.
+  static const _stall = Duration(seconds: 3);
+
+  double _speed = 0;
+  int _sampleBytes = 0;
+  DateTime? _sampleAt;
+
   String get name => p.basename(remotePath);
 
   double get fraction => total <= 0 ? 0 : (done / total).clamp(0.0, 1.0);
 
   bool get isActive => state == TransferState.queued || state == TransferState.running;
+
+  /// Сколько ещё осталось передать. Для задачи с неизвестным размером — ноль.
+  int get left => total <= 0 ? 0 : (total - done).clamp(0, total);
+
+  /// Текущая скорость, байт в секунду. Ноль — либо ещё не замеряли,
+  /// либо передача встала.
+  int get bytesPerSecond {
+    final at = _sampleAt;
+    if (at == null || _speed <= 0) return 0;
+    if (DateTime.now().difference(at) > _stall) return 0;
+    return _speed.round();
+  }
+
+  /// Сколько осталось при нынешней скорости. Null — считать пока не из чего.
+  Duration? get remaining {
+    final speed = bytesPerSecond;
+    if (speed <= 0 || total <= 0) return null;
+    return Duration(seconds: (left / speed).ceil());
+  }
+
+  /// Средняя скорость за всю передачу — ею подписываем уже законченное.
+  int get averageSpeed {
+    final from = startedAt;
+    final to = finishedAt;
+    if (from == null || to == null) return 0;
+    final ms = to.difference(from).inMilliseconds;
+    return ms <= 0 ? 0 : (done * 1000 / ms).round();
+  }
+
+  /// Замер скорости. Копится экспоненциальным средним: мгновенная скорость
+  /// скачет вместе с размером чанка, а цифра под курсором должна
+  /// успокаиваться, а не дёргаться.
+  void sample(int bytes) {
+    final now = DateTime.now();
+    final at = _sampleAt;
+    if (at == null) {
+      _sampleAt = now;
+      _sampleBytes = bytes;
+      return;
+    }
+
+    final ms = now.difference(at).inMilliseconds;
+    if (ms < _window.inMilliseconds) return;
+
+    final rate = (bytes - _sampleBytes) * 1000 / ms;
+    _speed = _speed <= 0 ? rate : _speed * 0.7 + rate * 0.3;
+    if (_speed < 0) _speed = 0;
+    _sampleAt = now;
+    _sampleBytes = bytes;
+  }
 }
 
 /// Очередь передач с ограничением параллелизма. Три потока — компромисс:
@@ -50,18 +116,23 @@ class TransferTask {
 class TransferQueue extends ChangeNotifier {
   TransferQueue(this._dav, this._vault);
 
-  WebDavClient _dav;
+  StorageBackend _dav;
   final Vault _vault;
 
   static const concurrency = 3;
 
   final List<TransferTask> _tasks = [];
   final Queue<TransferTask> _pending = Queue();
+
+  /// Активная задача по пути на сервере. Нужна списку файлов: он спрашивает
+  /// про каждую видимую строку на каждом кадре, и перебор здесь был бы
+  /// заметен на большой папке.
+  final Map<String, TransferTask> _activeByPath = {};
   int _running = 0;
   int _nextId = 1;
 
   /// Позвать после смены учётной записи.
-  set client(WebDavClient value) => _dav = value;
+  set client(StorageBackend value) => _dav = value;
 
   List<TransferTask> get tasks => List.unmodifiable(_tasks.reversed);
 
@@ -76,6 +147,35 @@ class TransferQueue extends ChangeNotifier {
     final done = live.fold<int>(0, (s, t) => s + t.done);
     final total = live.fold<int>(0, (s, t) => s + t.total);
     return total == 0 ? 0 : done / total;
+  }
+
+  TransferTask? activeFor(String remotePath) => _activeByPath[remotePath];
+
+  /// Общая скорость обмена с сервером: складываем только те задачи, что
+  /// действительно идут. Стоящие в очереди ничего не занимают.
+  int get bytesPerSecond => _tasks
+      .where((t) => t.state == TransferState.running)
+      .fold<int>(0, (s, t) => s + t.bytesPerSecond);
+
+  /// Сколько всего осталось передать по всей очереди.
+  int get remainingBytes => active.fold<int>(0, (s, t) => s + t.left);
+
+  /// Сколько уже передано и сколько всего предстоит — по активным задачам,
+  /// у которых известен размер. Ими подписана полоса в шапке файлов.
+  int get doneBytes =>
+      active.where((t) => t.total > 0).fold<int>(0, (s, t) => s + t.done);
+
+  int get totalBytes =>
+      active.where((t) => t.total > 0).fold<int>(0, (s, t) => s + t.total);
+
+  /// Оценка на всю очередь. Ждущие своей очереди сюда тоже входят: они
+  /// поедут на той же скорости, просто позже.
+  Duration? get remaining {
+    final speed = bytesPerSecond;
+    if (speed <= 0) return null;
+    final left = remainingBytes;
+    if (left <= 0) return Duration.zero;
+    return Duration(seconds: (left / speed).ceil());
   }
 
   TransferTask enqueueDownload(RemoteFile file) {
@@ -109,6 +209,7 @@ class TransferQueue extends ChangeNotifier {
   TransferTask _submit(TransferTask task) {
     _tasks.add(task);
     _pending.add(task);
+    _activeByPath[task.remotePath] = task;
     _vault.markBusy(task.remotePath, true);
     notifyListeners();
     _pump();
@@ -146,6 +247,7 @@ class TransferQueue extends ChangeNotifier {
 
   Future<void> _run(TransferTask task) async {
     task.state = TransferState.running;
+    task.startedAt = DateTime.now();
     notifyListeners();
 
     // Прогресс тикает часто; перерисовываем не чаще, чем раз в 100 мс,
@@ -154,6 +256,7 @@ class TransferQueue extends ChangeNotifier {
     void onProgress(int done, int total) {
       task.done = done;
       if (total > 0) task.total = total;
+      task.sample(done);
       final now = DateTime.now();
       if (now.difference(lastTick).inMilliseconds >= 100) {
         lastTick = now;
@@ -191,8 +294,19 @@ class TransferQueue extends ChangeNotifier {
 
   void _finish(TransferTask task, TransferState state) {
     task.state = state;
-    final stillBusy = _tasks.any((t) => t.isActive && t.remotePath == task.remotePath);
-    if (!stillBusy) _vault.markBusy(task.remotePath, false);
+    task.finishedAt = DateTime.now();
+
+    // По одному пути может идти вторая задача — скачивание сразу за
+    // отправкой. Тогда путь остаётся занятым, а на индексе его заменяет она.
+    final next = _tasks
+        .where((t) => t.isActive && t.remotePath == task.remotePath)
+        .firstOrNull;
+    if (next == null) {
+      _activeByPath.remove(task.remotePath);
+      _vault.markBusy(task.remotePath, false);
+    } else {
+      _activeByPath[task.remotePath] = next;
+    }
     notifyListeners();
   }
 }

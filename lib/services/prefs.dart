@@ -23,6 +23,15 @@ class Prefs {
   static const _updateServer = 'update.server';
   static const _updateAuto = 'update.auto';
   static const _vaultRoot = 'vault.root';
+  static const _autoPush = 'edit.autopush';
+  static const _syncEnabled = 'sync.enabled';
+  static const _syncInterval = 'sync.interval';
+  static const _syncEverything = 'sync.everything';
+  static const _tray = 'tray.enabled';
+  static const _closeToTray = 'tray.onclose';
+  static const _hotkey = 'hotkey.enabled';
+  static const _googleId = 'google.clientId';
+  static const _googleSecret = 'google.clientSecret';
   static const _winW = 'window.width';
   static const _winH = 'window.height';
   static const _winX = 'window.x';
@@ -71,10 +80,73 @@ class Prefs {
 
   // ------------------------------------------------------------ хранилище
 
-  /// Куда складывать скачанные файлы. Пусто — папка приложения по умолчанию.
-  String readVaultRoot() => _p.getString(_vaultRoot) ?? '';
+  /// Куда складывать скачанные файлы этой учётной записи.
+  /// Пусто — папка ещё не выбиралась.
+  ///
+  /// Папка своя у каждой записи: у разных облаков по одному и тому же пути
+  /// лежат разные файлы. Прежняя общая настройка достаётся первой записи,
+  /// иначе после обновления её файлы оказались бы не там, где их ищут.
+  String readVaultRoot(String accountSlug) =>
+      _p.getString('$_vaultRoot.$accountSlug') ?? _p.getString(_vaultRoot) ?? '';
 
-  Future<void> writeVaultRoot(String path) => _p.setString(_vaultRoot, path);
+  Future<void> writeVaultRoot(String accountSlug, String path) =>
+      _p.setString('$_vaultRoot.$accountSlug', path);
+
+  /// Отправлять ли правки открытого файла сразу, как только он сохранён.
+  /// По умолчанию да — ради этого «правка на месте» и затевалась; выключенный
+  /// режим вместо отправки показывает предложение.
+  bool readAutoPushEdits() => _p.getBool(_autoPush) ?? true;
+
+  Future<void> writeAutoPushEdits(bool value) => _p.setBool(_autoPush, value);
+
+  // ------------------------------------------------------- синхронизация
+
+  bool readSyncEnabled() => _p.getBool(_syncEnabled) ?? true;
+
+  Future<void> writeSyncEnabled(bool value) => _p.setBool(_syncEnabled, value);
+
+  /// Как часто обходить закреплённые папки, в минутах.
+  int readSyncInterval() => _p.getInt(_syncInterval) ?? 5;
+
+  Future<void> writeSyncInterval(int minutes) => _p.setInt(_syncInterval, minutes);
+
+  /// Синхронизировать всё дерево, а не только закреплённые папки.
+  /// По умолчанию нет: это может утянуть на диск всё облако целиком.
+  bool readSyncEverything() => _p.getBool(_syncEverything) ?? false;
+
+  Future<void> writeSyncEverything(bool value) => _p.setBool(_syncEverything, value);
+
+  // ----------------------------------------------- трей и горячая клавиша
+
+  /// Всё по умолчанию выключено: программа, самовольно занявшая трей,
+  /// автозапуск и системное сочетание клавиш, — дурной тон.
+  bool readTrayEnabled() => _p.getBool(_tray) ?? false;
+
+  Future<void> writeTrayEnabled(bool value) => _p.setBool(_tray, value);
+
+  bool readCloseToTray() => _p.getBool(_closeToTray) ?? false;
+
+  Future<void> writeCloseToTray(bool value) => _p.setBool(_closeToTray, value);
+
+  bool readHotkeyEnabled() => _p.getBool(_hotkey) ?? false;
+
+  Future<void> writeHotkeyEnabled(bool value) => _p.setBool(_hotkey, value);
+
+  // ------------------------------------------------------- клиент Google
+
+  /// Учётные данные приложения в Google. Регистрируются один раз человеком
+  /// в Cloud Console: из кода это сделать нельзя. Секрет здесь секретный
+  /// только по названию — для настольных приложений Google прямо пишет,
+  /// что скрыть его невозможно, доступ всё равно подтверждается в браузере.
+  ({String id, String secret}) readGoogleClient() => (
+        id: _p.getString(_googleId) ?? '',
+        secret: _p.getString(_googleSecret) ?? '',
+      );
+
+  Future<void> writeGoogleClient(String id, String secret) async {
+    await _p.setString(_googleId, id.trim());
+    await _p.setString(_googleSecret, secret.trim());
+  }
 
   // ----------------------------------------------------------------- окно
 

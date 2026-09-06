@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.2.0+2
+version: 0.3.0+3
 
 environment:
   sdk: ^3.12.0
@@ -41,7 +41,6 @@ dependencies:
   shared_preferences: ^2.5.5
   path_provider: ^2.1.6
   url_launcher: ^6.3.2
-  desktop_drop: ^0.8.4
   file_selector: ^1.1.0
   intl: ^0.20.3
   crypto: ^3.0.7
@@ -50,6 +49,17 @@ dependencies:
   auto_updater: ^1.0.0
   package_info_plus: ^10.2.1
   screen_retriever: ^0.2.2
+  tray_manager: ^0.5.3
+  launch_at_startup: ^0.0.1
+  hotkey_manager: ^0.2.3
+  super_drag_and_drop: ^0.9.1
+  super_native_extensions: ^0.9.1
+
+# super_native_extensions ограничивает device_info_plus версией <12, а та
+# тянет win32 <6 — тогда как flutter_secure_storage требует win32 ^6.
+# Перекрываем: на Windows device_info_plus этим пакетом почти не задействован.
+dependency_overrides:
+  device_info_plus: ^13.0.0
 
 dev_dependencies:
   flutter_test:
@@ -76,6 +86,11 @@ flutter:
   # Фрагментный шейдер фона (режим оформления «Шейдер»).
   shaders:
     - shaders/aurora.frag
+
+  # Значок для системного трея. Тот же файл, что и у окна: в трее он
+  # должен читаться как то же самое приложение.
+  assets:
+    - assets/icon/app_icon.ico
 
   # To add assets to your application, add an assets section, like this:
   # assets:

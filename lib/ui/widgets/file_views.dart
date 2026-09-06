@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import '../../core/format.dart';
 import '../../core/models/remote_file.dart';
 import '../../services/thumbnail_cache.dart';
+import '../../services/transfer_queue.dart';
 import '../theme.dart';
 import '../tokens.dart';
+import 'controls.dart';
 import 'presence_badge.dart';
 
 /// Миниатюра с сервера, если она есть, иначе — иконка по расширению.
@@ -126,7 +128,7 @@ class FileRow extends StatefulWidget {
     required this.onSecondaryTap,
     required this.onTogglePin,
     this.dropHighlight = false,
-    this.progress,
+    this.transfer,
   });
 
   final RemoteFile file;
@@ -141,8 +143,10 @@ class FileRow extends StatefulWidget {
   /// Подсветка, когда на строку-папку тащат файлы.
   final bool dropHighlight;
 
-  /// 0..1 во время передачи — рисуем тонкой полоской под строкой.
-  final double? progress;
+  /// Передача по этому файлу, пока она идёт. На время передачи колонки
+  /// размера и даты уступают место скорости и оценке остатка — цифры и так
+  /// стоят справа, а искать их в другом разделе не приходится.
+  final TransferTask? transfer;
 
   static const height = 40.0;
 
@@ -158,6 +162,26 @@ class _FileRowState extends State<FileRow> {
     final t = NxTheme.of(context);
     final p = t.palette;
     final f = widget.file;
+
+    // Пока идёт передача, две правые колонки показывают её: скорость там,
+    // где обычно размер, и остаток там, где дата.
+    final task = widget.transfer;
+    final speed = task?.bytesPerSecond ?? 0;
+    final left = task?.remaining;
+
+    final sizeColumn = task == null
+        ? (f.isDir && f.size == 0 ? '—' : formatBytes(f.size))
+        : speed > 0
+            ? formatSpeed(speed)
+            : '${(task.fraction * 100).round()}%';
+
+    final dateColumn = task == null
+        ? formatDate(f.modified)
+        : left != null && left > Duration.zero
+            ? 'осталось ${formatDuration(left)}'
+            : task.kind == TransferKind.download
+                ? 'скачивание'
+                : 'отправка';
 
     final background = widget.dropHighlight
         ? t.accent.a2.withValues(alpha: 0.22)
@@ -181,7 +205,6 @@ class _FileRowState extends State<FileRow> {
         onSecondaryTapUp: (d) => widget.onSecondaryTap(d.globalPosition),
         child: Container(
           height: FileRow.height,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(10),
@@ -193,49 +216,79 @@ class _FileRowState extends State<FileRow> {
                       : Colors.transparent,
             ),
           ),
-          child: Row(children: [
-            FileThumbnail(file: f, cache: widget.cache, size: 24),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 5,
-              child: Text(
-                f.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: NxType.bodyText.copyWith(
-                  color: widget.selected ? p.txt : p.body,
-                  fontSize: 13,
-                  fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
+          child: Stack(children: [
+            if (task != null)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 3,
+                child: NxProgressLine(fraction: task.fraction, height: 2),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(children: [
+                FileThumbnail(file: f, cache: widget.cache, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 5,
+                  child: Text(
+                    f.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: NxType.bodyText.copyWith(
+                      color: widget.selected ? p.txt : p.body,
+                      fontSize: 13,
+                      fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 26,
-              child: Center(child: PresenceBadge(presence: widget.presence, size: 14)),
-            ),
-            SizedBox(
-              width: 28,
-              child: _hover || widget.presence == Presence.pinned
-                  ? _PinButton(pinned: widget.presence == Presence.pinned, onTap: widget.onTogglePin)
-                  : const SizedBox.shrink(),
-            ),
-            SizedBox(
-              width: 92,
-              child: Text(
-                f.isDir && f.size == 0 ? '—' : formatBytes(f.size),
-                textAlign: TextAlign.right,
-                style: NxType.numeric.copyWith(color: p.sub, fontSize: 11),
-              ),
-            ),
-            const SizedBox(width: 18),
-            SizedBox(
-              width: 132,
-              child: Text(
-                formatDate(f.modified),
-                textAlign: TextAlign.right,
-                style: NxType.numeric.copyWith(color: p.faint, fontSize: 11),
-              ),
+                const SizedBox(width: 10),
+                // Звёздочка стоит перед статусом присутствия: это про сам
+                // файл, а не про то, где он лежит.
+                SizedBox(
+                  width: 18,
+                  child: f.favorite
+                      ? const Icon(Icons.star_rounded, size: 13, color: NxPalette.warn)
+                      : const SizedBox.shrink(),
+                ),
+                // Признак «на это есть ссылка» — сервер отдаёт его правом S.
+                SizedBox(
+                  width: 18,
+                  child: f.isShared
+                      ? Icon(Icons.link_rounded, size: 13, color: t.accent.a2)
+                      : const SizedBox.shrink(),
+                ),
+                SizedBox(
+                  width: 26,
+                  child: Center(child: PresenceBadge(presence: widget.presence, size: 14)),
+                ),
+                SizedBox(
+                  width: 28,
+                  child: _hover || widget.presence == Presence.pinned
+                      ? _PinButton(pinned: widget.presence == Presence.pinned, onTap: widget.onTogglePin)
+                      : const SizedBox.shrink(),
+                ),
+                SizedBox(
+                  width: 92,
+                  child: Text(
+                    sizeColumn,
+                    textAlign: TextAlign.right,
+                    style: NxType.numeric.copyWith(
+                      color: task == null ? p.sub : t.accent.a1,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 18),
+                SizedBox(
+                  width: 132,
+                  child: Text(
+                    dateColumn,
+                    textAlign: TextAlign.right,
+                    style: NxType.numeric.copyWith(color: p.faint, fontSize: 11),
+                  ),
+                ),
+              ]),
             ),
           ]),
         ),
@@ -282,6 +335,7 @@ class FileTile extends StatefulWidget {
     required this.onDoubleTap,
     required this.onSecondaryTap,
     this.dropHighlight = false,
+    this.transfer,
   });
 
   final RemoteFile file;
@@ -292,6 +346,9 @@ class FileTile extends StatefulWidget {
   final VoidCallback onDoubleTap;
   final void Function(Offset globalPosition) onSecondaryTap;
   final bool dropHighlight;
+
+  /// Передача по этой плитке, пока она идёт.
+  final TransferTask? transfer;
 
   @override
   State<FileTile> createState() => _FileTileState();
@@ -305,6 +362,16 @@ class _FileTileState extends State<FileTile> {
     final t = NxTheme.of(context);
     final p = t.palette;
     final f = widget.file;
+
+    final task = widget.transfer;
+    final speed = task?.bytesPerSecond ?? 0;
+    // На плитке места на одну строку — берём самое ходовое: скорость,
+    // а пока её не замерили — проценты.
+    final caption = task == null
+        ? (f.isDir ? 'Папка' : formatBytes(f.size))
+        : speed > 0
+            ? '${(task.fraction * 100).round()}% · ${formatSpeed(speed)}'
+            : '${(task.fraction * 100).round()}%';
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -347,6 +414,12 @@ class _FileTileState extends State<FileTile> {
                   top: 0,
                   child: PresenceBadge(presence: widget.presence, size: 14),
                 ),
+                if (f.favorite)
+                  const Positioned(
+                    left: 0,
+                    top: 0,
+                    child: Icon(Icons.star_rounded, size: 14, color: NxPalette.warn),
+                  ),
               ]),
             ),
             const SizedBox(height: 8),
@@ -361,10 +434,19 @@ class _FileTileState extends State<FileTile> {
                 height: 1.3,
               ),
             ),
+            if (task != null) ...[
+              const SizedBox(height: 5),
+              NxProgressLine(fraction: task.fraction, height: 2),
+            ],
             const SizedBox(height: 3),
             Text(
-              f.isDir ? 'Папка' : formatBytes(f.size),
-              style: NxType.numeric.copyWith(color: p.faint, fontSize: 10),
+              caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: NxType.numeric.copyWith(
+                color: task == null ? p.faint : t.accent.a1,
+                fontSize: 10,
+              ),
             ),
           ]),
         ),
