@@ -285,8 +285,15 @@ class UsageMeter extends StatelessWidget {
           height: 5,
           child: Stack(children: [
             ColoredBox(color: p.chip, child: const SizedBox.expand()),
+            // heightFactor обязателен: без него DecoratedBox внутри Stack
+            // получает нестрогие ограничения по высоте и схлопывается в ноль —
+            // полоса рисуется, а заливка невидима. Выравнивание тоже своё:
+            // по умолчанию FractionallySizedBox ставит ребёнка по центру,
+            // и заполнение поползло бы от середины, а не слева.
             FractionallySizedBox(
               widthFactor: fraction.clamp(0.0, 1.0),
+              heightFactor: 1,
+              alignment: Alignment.centerLeft,
               child: DecoratedBox(
                 decoration: BoxDecoration(gradient: gradient ?? t.accent.badge),
               ),
@@ -373,10 +380,11 @@ class StatusDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = NxTheme.of(context).palette;
-    return Row(children: [
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         width: 7,
         height: 7,
+        margin: const EdgeInsets.only(top: 4),
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
@@ -387,9 +395,12 @@ class StatusDot extends StatelessWidget {
       Expanded(
         child: Text(
           label,
-          maxLines: 1,
+          // Две строки, а не одна: «Подключено к Яндекс.Диску» в узкую
+          // колонку не влезает, а обрезать название облака до многоточия —
+          // значит скрыть ровно то, ради чего строка и написана.
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: NxType.label.copyWith(color: p.txt, fontSize: 12.5),
+          style: NxType.label.copyWith(color: p.txt, fontSize: 11.5, height: 1.25),
         ),
       ),
     ]);

@@ -404,8 +404,12 @@ class NxProgressLine extends StatelessWidget {
         height: height,
         child: Stack(children: [
           ColoredBox(color: t.palette.chip, child: const SizedBox.expand()),
+          // См. UsageMeter: без heightFactor заливка схлопывается в ноль,
+          // без выравнивания ползёт от середины.
           FractionallySizedBox(
             widthFactor: fraction.clamp(0.0, 1.0),
+            heightFactor: 1,
+            alignment: Alignment.centerLeft,
             child: DecoratedBox(decoration: BoxDecoration(gradient: t.accent.badge)),
           ),
         ]),
