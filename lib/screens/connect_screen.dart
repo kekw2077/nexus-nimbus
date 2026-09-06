@@ -257,10 +257,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
       const SectionLabel('Учётная запись'),
       const SizedBox(height: 8),
-      NxField(
-        controller: _login,
-        hint: _provider == CloudProvider.yandex ? 'Имя на Яндексе' : 'Имя пользователя',
-      ),
+      NxField(controller: _login, hint: _provider.loginHint),
       const SizedBox(height: 9),
       _PasswordField(controller: _password),
       const SizedBox(height: 9),

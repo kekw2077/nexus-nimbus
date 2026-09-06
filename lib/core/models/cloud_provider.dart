@@ -68,6 +68,15 @@ enum CloudProvider {
   /// Вход через браузер (Login Flow v2).
   bool get hasBrowserLogin => _nextcloudOnly;
 
+  /// Что вводить в поле логина — подсказка прямо в поле.
+  String get loginHint => switch (this) {
+        CloudProvider.nextcloud => 'Имя пользователя',
+        // Яндекс принимает и короткий логин, и полную почту. У записей
+        // Яндекс 360 на своём домене короткого логина нет вовсе.
+        CloudProvider.yandex => 'Логин или почта: ivan или ivan@yandex.ru',
+        CloudProvider.google => '',
+      };
+
   /// Где взять пароль приложения — подсказка на форме входа.
   String get passwordHint => switch (this) {
         CloudProvider.nextcloud =>

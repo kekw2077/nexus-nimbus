@@ -458,9 +458,7 @@ class _LoginBodyState extends State<_LoginBody> {
           const SizedBox(height: 12),
         ],
         _label('Логин', p),
-        NxField(controller: _login, hint: provider == CloudProvider.yandex
-            ? 'имя на Яндексе'
-            : 'имя пользователя'),
+        NxField(controller: _login, hint: provider.loginHint),
         const SizedBox(height: 12),
         _label('Пароль приложения', p),
         NxField(controller: _password, hint: '••••••••', obscure: true),
