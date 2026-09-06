@@ -436,30 +436,51 @@ void main() {
       dav.close();
     });
 
-    test('у Яндекса корень WebDAV и есть корень диска', () {
-      final dav = WebDavClient(account(CloudProvider.yandex));
-      expect(dav.fileUri('Загрузки/фильм.mp4').host, 'webdav.yandex.ru');
-      expect(
-        Uri.decodeFull(dav.fileUri('Загрузки/фильм.mp4').path),
-        '/Загрузки/фильм.mp4',
-      );
-      dav.close();
+    test('у облаков с REST своего корня в адресе нет', () {
+      // Путь после базового адреса нужен только тем, кто говорит WebDAV.
+      expect(CloudProvider.yandex.filesRoot('art'), isEmpty);
+      expect(CloudProvider.google.filesRoot('art'), isEmpty);
     });
 
     test('расширения Nextcloud есть только у Nextcloud', () {
-      expect(CloudProvider.nextcloud.hasTrash, isTrue);
+      for (final v in [CloudProvider.yandex, CloudProvider.google]) {
+        expect(v.hasFavorites, isFalse, reason: v.label);
+        expect(v.hasVersions, isFalse, reason: v.label);
+        expect(v.hasChunkedUpload, isFalse, reason: v.label);
+        expect(v.hasSearch, isFalse, reason: v.label);
+        expect(v.hasBrowserLogin, isFalse, reason: v.label);
+        expect(v.hasLinkOptions, isFalse, reason: v.label);
+      }
+      expect(CloudProvider.nextcloud.hasFavorites, isTrue);
       expect(CloudProvider.nextcloud.hasSearch, isTrue);
-      expect(CloudProvider.yandex.hasTrash, isFalse);
-      expect(CloudProvider.yandex.hasFavorites, isFalse);
-      expect(CloudProvider.yandex.hasChunkedUpload, isFalse);
-      expect(CloudProvider.yandex.hasBrowserLogin, isFalse);
     });
 
-    test('к Google Drive пароль не подходит, к остальным — да', () {
-      // У Диска нет протокола, принимающего пароль: только OAuth.
-      expect(CloudProvider.google.hasPasswordLogin, isFalse);
+    test('у Яндекса по REST есть корзина, миниатюры и ссылки', () {
+      // Ради этого и ушли с WebDAV: по нему у Яндекса ничего этого нет,
+      // да и сам он оставлен платным подпискам.
+      expect(CloudProvider.yandex.hasTrash, isTrue);
+      expect(CloudProvider.yandex.hasPreviews, isTrue);
+      expect(CloudProvider.yandex.hasShares, isTrue);
+      // Но пароль у ссылки Диск не принимает — только включить и выключить.
+      expect(CloudProvider.yandex.hasLinkOptions, isFalse);
+    });
+
+    test('у Google Drive нет ни корзины, ни миниатюр, ни ссылок', () {
+      expect(CloudProvider.google.hasTrash, isFalse);
+      expect(CloudProvider.google.hasPreviews, isFalse);
+      expect(CloudProvider.google.hasShares, isFalse);
+    });
+
+    test('паролем входим только в Nextcloud, к остальным — через браузер', () {
       expect(CloudProvider.nextcloud.hasPasswordLogin, isTrue);
-      expect(CloudProvider.yandex.hasPasswordLogin, isTrue);
+      expect(CloudProvider.nextcloud.needsOAuth, isFalse);
+
+      for (final v in [CloudProvider.yandex, CloudProvider.google]) {
+        expect(v.hasPasswordLogin, isFalse, reason: v.label);
+        expect(v.needsOAuth, isTrue, reason: v.label);
+        // Приложение регистрируется у облака — адрес должен быть под рукой.
+        expect(v.consoleUrl, isNotEmpty, reason: v.label);
+      }
     });
 
     test('имя облака переживает запись и чтение', () {

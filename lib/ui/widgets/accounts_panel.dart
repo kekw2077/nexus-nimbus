@@ -25,8 +25,10 @@ Future<void> showAccounts(
     barrierColor: const Color(0x55000000),
     builder: (ctx) {
       final screen = MediaQuery.of(ctx).size;
-      const width = 330.0;
-      const gap = 10.0;
+      // По ширине карточки внизу слева: панель — её продолжение, а не
+      // отдельное окно поверх.
+      const width = 268.0;
+      const gap = 8.0;
 
       // Держим панель у карточки, но не даём ей вылезти за края экрана.
       final left = anchor.left.clamp(gap, screen.width - width - gap);
@@ -42,7 +44,7 @@ Future<void> showAccounts(
             width: width,
             child: GlassPanel(
               radius: NxRadius.card,
-              padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+              padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
               shadow: true,
               color: t.palette.solid,
               child: AccountsList(app: app, onDone: () => Navigator.of(ctx).pop()),
@@ -69,7 +71,6 @@ class AccountsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
     final saved = app.accounts;
     final activeId = app.active?.id;
 
@@ -84,12 +85,7 @@ class AccountsList extends StatelessWidget {
       children: [
         if (compact) ...[
           SectionLabel('Учётные записи'),
-          const SizedBox(height: 4),
-          Text(
-            'Каждое облако подключается своей записью.',
-            style: NxType.caption.copyWith(color: p.faint, fontSize: 11),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 9),
         ],
         for (final account in saved) ...[
           _AccountRow(
@@ -98,11 +94,11 @@ class AccountsList extends StatelessWidget {
             active: account.id == activeId,
             onDone: onDone,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
         ],
         for (final provider in rest) ...[
           _ProviderRow(app: app, provider: provider, onDone: onDone),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
         ],
       ],
     );
@@ -164,7 +160,7 @@ class _AccountRowState extends State<_AccountRow> {
         onTap: _switch,
         child: AnimatedContainer(
           duration: NxMotion.hover,
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
           decoration: BoxDecoration(
             color: _hover && !widget.active ? p.hover : p.field,
             borderRadius: BorderRadius.circular(NxRadius.tile),
@@ -175,31 +171,31 @@ class _AccountRowState extends State<_AccountRow> {
           child: Row(children: [
             Icon(
               widget.active ? Icons.cloud_done_rounded : Icons.cloud_queue_rounded,
-              size: 17,
+              size: 15,
               color: widget.active ? t.accent.a1 : p.sub,
             ),
-            const SizedBox(width: 11),
+            const SizedBox(width: 9),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(account.provider.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: NxType.label.copyWith(color: p.txt, fontSize: 12.5)),
-                const SizedBox(height: 2),
+                    style: NxType.label.copyWith(color: p.txt, fontSize: 12)),
+                const SizedBox(height: 1),
                 Text(
                   '${account.baseUrl.host} · '
                   '${account.displayName ?? account.loginName}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: NxType.numeric.copyWith(color: p.faint, fontSize: 10),
+                  style: NxType.numeric.copyWith(color: p.faint, fontSize: 9.5),
                 ),
               ]),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             if (widget.active)
-              Icon(Icons.check_rounded, size: 15, color: t.accent.a1)
+              Icon(Icons.check_rounded, size: 14, color: t.accent.a1)
             else
-              Icon(Icons.chevron_right_rounded, size: 15, color: p.sub),
+              Icon(Icons.chevron_right_rounded, size: 14, color: p.sub),
             Tooltip(
               message: 'Забыть запись',
               child: MouseRegion(
@@ -207,8 +203,8 @@ class _AccountRowState extends State<_AccountRow> {
                 child: GestureDetector(
                   onTap: _forget,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
-                    child: Icon(Icons.close_rounded, size: 14, color: p.faint),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                    child: Icon(Icons.close_rounded, size: 13, color: p.faint),
                   ),
                 ),
               ),
@@ -253,32 +249,32 @@ class _ProviderRowState extends State<_ProviderRow> {
         onTap: _login,
         child: AnimatedContainer(
           duration: NxMotion.hover,
-          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
           decoration: BoxDecoration(
             color: _hover ? p.hover : p.field,
             borderRadius: BorderRadius.circular(NxRadius.tile),
             border: Border.all(color: p.stroke),
           ),
           child: Row(children: [
-            Icon(Icons.cloud_off_rounded, size: 17, color: p.faint),
-            const SizedBox(width: 11),
+            Icon(Icons.cloud_off_rounded, size: 15, color: p.faint),
+            const SizedBox(width: 9),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(provider.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: NxType.label.copyWith(color: p.sub, fontSize: 12.5)),
-                const SizedBox(height: 2),
+                    style: NxType.label.copyWith(color: p.sub, fontSize: 12)),
+                const SizedBox(height: 1),
                 Text(
-                  'не подключено — войти',
+                  'не подключено',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: NxType.numeric.copyWith(color: p.faint, fontSize: 10),
+                  style: NxType.numeric.copyWith(color: p.faint, fontSize: 9.5),
                 ),
               ]),
             ),
-            const SizedBox(width: 8),
-            Icon(Icons.chevron_right_rounded, size: 15, color: p.sub),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, size: 14, color: p.sub),
           ]),
         ),
       ),

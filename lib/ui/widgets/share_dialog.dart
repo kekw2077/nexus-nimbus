@@ -152,6 +152,7 @@ class _ShareBodyState extends State<_ShareBody> {
   Widget build(BuildContext context) {
     final t = NxTheme.of(context);
     final p = t.palette;
+    final options = widget.session.account.provider.hasLinkOptions;
 
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text('Публичные ссылки', style: NxType.title.copyWith(color: p.txt, fontSize: 17)),
@@ -172,26 +173,31 @@ class _ShareBodyState extends State<_ShareBody> {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SectionLabel('Новая ссылка'),
-          const SizedBox(height: 11),
-          NxField(
-            controller: _password,
-            hint: 'Пароль — если он нужен',
-            obscure: true,
-          ),
-          const SizedBox(height: 11),
-          Row(children: [
-            Text('Срок', style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
-            const SizedBox(width: 12),
-            NxSegmented(
-              compact: true,
-              options: _termLabels,
-              value: _termLabels[_days == 0 ? 0 : (_days == 7 ? 1 : 2)],
-              onChanged: (v) => setState(() {
-                _days = switch (v) { '7 дней' => 7, '30 дней' => 30, _ => 0 };
-              }),
+          // Пароль, срок и право загружать принимает не всякое облако:
+          // Яндекс ссылку просто включает и выключает.
+          if (options) ...[
+            const SizedBox(height: 11),
+            NxField(
+              controller: _password,
+              hint: 'Пароль — если он нужен',
+              obscure: true,
             ),
-          ]),
-          if (widget.file.isDir) ...[
+            const SizedBox(height: 11),
+            Row(children: [
+              Text('Срок',
+                  style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
+              const SizedBox(width: 12),
+              NxSegmented(
+                compact: true,
+                options: _termLabels,
+                value: _termLabels[_days == 0 ? 0 : (_days == 7 ? 1 : 2)],
+                onChanged: (v) => setState(() {
+                  _days = switch (v) { '7 дней' => 7, '30 дней' => 30, _ => 0 };
+                }),
+              ),
+            ]),
+          ],
+          if (options && widget.file.isDir) ...[
             const SizedBox(height: 11),
             Row(children: [
               Expanded(

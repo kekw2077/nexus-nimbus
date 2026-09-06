@@ -237,8 +237,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
       // свой. Отдельным окном, тем же, что открывается из настроек.
       if (!_provider.hasPasswordLogin) ...[
         Text(
-          'К Google Drive пароль не подходит: доступ выдаётся разрешением '
-          'в браузере, и только приложению, которое Google знает.',
+          _provider == CloudProvider.yandex
+              ? 'WebDAV Яндекс оставил платным подпискам, поэтому работаем по '
+                  'их API: доступ выдаётся разрешением в браузере.'
+              : 'К Google Drive пароль не подходит: доступ выдаётся разрешением '
+                  'в браузере, и только приложению, которое Google знает.',
           style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.5),
         ),
         const SizedBox(height: 16),

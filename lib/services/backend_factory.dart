@@ -3,6 +3,7 @@ import 'google/drive_client.dart';
 import 'google/google_auth.dart';
 import 'storage_backend.dart';
 import 'webdav_client.dart';
+import 'yandex/disk_client.dart';
 
 /// Собирает клиента под облако учётной записи.
 ///
@@ -12,8 +13,12 @@ import 'webdav_client.dart';
 StorageBackend createBackend(NxAccount account, {GoogleClientId? google}) {
   switch (account.provider) {
     case CloudProvider.nextcloud:
-    case CloudProvider.yandex:
       return WebDavClient(account);
+
+    // У Яндекса WebDAV оставлен платным подпискам и бесплатным записям
+    // отвечает кодом 402, поэтому ходим по их REST API.
+    case CloudProvider.yandex:
+      return YandexDiskClient(account);
 
     case CloudProvider.google:
       if (google == null || google.isEmpty) {

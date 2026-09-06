@@ -5,7 +5,9 @@ import '../../core/app_state.dart';
 import '../../core/models/cloud_provider.dart';
 import '../../services/google/google_auth.dart';
 import '../../services/login_flow.dart';
+import '../../services/oauth/loopback.dart';
 import '../../services/webdav_client.dart';
+import '../../services/yandex/yandex_auth.dart';
 import '../theme.dart';
 import '../tokens.dart';
 import 'controls.dart';
@@ -30,10 +32,10 @@ Future<bool> showLogin(
       onChanged: (_) {},
       child: Center(
         child: SizedBox(
-          width: 440,
+          width: 420,
           child: GlassPanel(
             radius: NxRadius.card,
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(20),
             shadow: true,
             color: t.palette.solid,
             child: _LoginBody(provider: provider, app: app),
@@ -59,23 +61,22 @@ class _LoginBodyState extends State<_LoginBody> {
   final _login = TextEditingController();
   final _password = TextEditingController();
 
+  /// Учётные данные приложения у облака с OAuth. Вводятся один раз и живут
+  /// в настройках, но без них вход не начать — поэтому поля показываются
+  /// прямо здесь, пока они пусты.
+  final _clientId = TextEditingController();
+  final _clientSecret = TextEditingController();
+  final _port = TextEditingController();
+
   bool _trustCertificate = false;
   bool _busy = false;
   String? _error;
+  bool _clientReady = false;
 
-  /// Пока ждём браузер, показываем отдельное состояние с отменой.
+  /// Ожидание браузера: у Nextcloud свой поток, у OAuth — общий приёмник.
   LoginFlow? _flow;
   CancelToken? _flowCancel;
-
-  /// То же ожидание, но для Google: у него свой обмен кодами.
-  CancelableWait? _googleWait;
-
-  /// Учётные данные приложения Google. Их вводят один раз, и дальше они
-  /// живут в настройках — но начать вход без них нельзя, поэтому поля
-  /// показываются прямо здесь, пока они пусты.
-  final _clientId = TextEditingController();
-  final _clientSecret = TextEditingController();
-  bool _clientReady = false;
+  CancelableWait? _oauthWait;
 
   CloudProvider get provider => widget.provider;
 
@@ -87,6 +88,12 @@ class _LoginBodyState extends State<_LoginBody> {
       _clientId.text = saved.id;
       _clientSecret.text = saved.secret;
       _clientReady = !saved.isEmpty;
+    } else if (provider == CloudProvider.yandex) {
+      final saved = widget.app.yandexClient;
+      _clientId.text = saved.id;
+      _clientSecret.text = saved.secret;
+      _port.text = '${saved.port}';
+      _clientReady = !saved.isEmpty;
     }
   }
 
@@ -97,22 +104,34 @@ class _LoginBodyState extends State<_LoginBody> {
     _password.dispose();
     _clientId.dispose();
     _clientSecret.dispose();
+    _port.dispose();
     _flowCancel?.cancel();
     _flow?.dispose();
-    _googleWait?.cancel();
+    _oauthWait?.cancel();
     super.dispose();
   }
 
-  // ------------------------------------------------------------- Google
+  // --------------------------------------------------------------- OAuth
 
-  Future<void> _saveGoogleClient() async {
+  Future<void> _saveClient() async {
     final id = _clientId.text.trim();
     final secret = _clientSecret.text.trim();
     if (id.isEmpty || secret.isEmpty) {
-      setState(() => _error = 'Нужны и идентификатор, и секрет клиента');
+      setState(() => _error = 'Нужны и идентификатор, и секрет приложения');
       return;
     }
-    await widget.app.saveGoogleClient(id, secret);
+
+    if (provider == CloudProvider.yandex) {
+      final port = int.tryParse(_port.text.trim());
+      if (port == null || port < 1024 || port > 65535) {
+        setState(() => _error = 'Порт должен быть числом от 1024 до 65535');
+        return;
+      }
+      await widget.app.saveYandexClient(id, secret, port);
+    } else {
+      await widget.app.saveGoogleClient(id, secret);
+    }
+
     if (mounted) {
       setState(() {
         _clientReady = true;
@@ -121,61 +140,80 @@ class _LoginBodyState extends State<_LoginBody> {
     }
   }
 
-  Future<void> _connectGoogle() async {
-    final client = widget.app.googleClient;
-    if (client.isEmpty) {
-      setState(() => _error = 'Сначала сохраните учётные данные приложения');
-      return;
-    }
-
+  Future<void> _connectOAuth() async {
     final wait = CancelableWait();
     setState(() {
       _busy = true;
       _error = null;
-      _googleWait = wait;
+      _oauthWait = wait;
     });
 
-    final auth = GoogleAuth(client);
+    Future<void> openUrl(Uri url) =>
+        launchUrl(url, mode: LaunchMode.externalApplication);
+
     try {
-      final granted = await auth.authorize(
-        onUrl: (url) => launchUrl(url, mode: LaunchMode.externalApplication),
-        cancel: wait,
-      );
-      if (!mounted) return;
-      if (granted == null) {
-        setState(() => _error = wait.isCancelled ? null : 'Время на вход истекло');
-        return;
+      final NxAccount account;
+
+      if (provider == CloudProvider.yandex) {
+        final auth = YandexAuth(widget.app.yandexClient);
+        try {
+          final granted = await auth.authorize(onUrl: openUrl, cancel: wait);
+          if (granted == null) return _timedOut(wait);
+          account = NxAccount(
+            baseUrl: provider.fixedServer!,
+            loginName: granted.login,
+            // Токен ложится туда же, где у прочих облаков пароль приложения:
+            // в защищённое хранилище системы.
+            appPassword: granted.token,
+            provider: provider,
+          );
+        } finally {
+          auth.close();
+        }
+      } else {
+        final auth = GoogleAuth(widget.app.googleClient);
+        try {
+          final granted = await auth.authorize(onUrl: openUrl, cancel: wait);
+          if (granted == null) return _timedOut(wait);
+          account = NxAccount(
+            baseUrl: provider.fixedServer!,
+            loginName: granted.email,
+            appPassword: granted.refreshToken,
+            provider: provider,
+          );
+        } finally {
+          auth.close();
+        }
       }
 
-      await widget.app.connect(NxAccount(
-        // Адрес у Диска один и в запросах не участвует — он нужен только
-        // затем, чтобы отличать записи друг от друга.
-        baseUrl: Uri.parse('https://drive.google.com'),
-        loginName: granted.email,
-        appPassword: granted.refreshToken,
-        provider: CloudProvider.google,
-      ));
+      await widget.app.connect(account);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
-      auth.close();
       if (mounted) {
         setState(() {
           _busy = false;
-          _googleWait = null;
+          _oauthWait = null;
         });
       }
     }
   }
 
-  void _cancelGoogle() {
-    _googleWait?.cancel();
+  void _timedOut(CancelableWait wait) {
+    if (!mounted) return;
+    setState(() => _error = wait.isCancelled ? null : 'Время на вход истекло');
+  }
+
+  void _cancelOAuth() {
+    _oauthWait?.cancel();
     setState(() {
-      _googleWait = null;
+      _oauthWait = null;
       _busy = false;
     });
   }
+
+  // ----------------------------------------------------------- пароль и DAV
 
   /// Приводит «cloud.example.com» и всё, что можно скопировать из адресной
   /// строки, к базовому адресу. У облака с постоянным адресом брать нечего.
@@ -285,6 +323,8 @@ class _LoginBodyState extends State<_LoginBody> {
     });
   }
 
+  // ---------------------------------------------------------------- сборка
+
   @override
   Widget build(BuildContext context) {
     final t = NxTheme.of(context);
@@ -295,94 +335,97 @@ class _LoginBodyState extends State<_LoginBody> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text('Вход в ${provider.label}',
-            style: NxType.title.copyWith(color: p.txt, fontSize: 17)),
-        const SizedBox(height: 14),
-        if (provider == CloudProvider.google)
-          _google(t, p)
+            style: NxType.title.copyWith(color: p.txt, fontSize: 16.5)),
+        const SizedBox(height: 13),
+        if (provider.needsOAuth)
+          _oauth(t, p)
         else if (_flow != null)
-          _waiting(t, p)
+          _waiting(t, p, 'Ждём подтверждения в браузере. Разрешите доступ на '
+              'открывшейся странице — окно закроется само.', _cancelFlow)
         else
           _form(t, p),
       ],
     );
   }
 
-  /// Вход в Google. Пароля здесь нет и быть не может: к Диску ведёт только
-  /// OAuth, а он требует, чтобы приложение было заранее зарегистрировано.
-  Widget _google(NxThemeData t, NxPalette p) {
-    if (_googleWait != null) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2, color: t.accent.a2),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Ждём разрешения в браузере. Выберите учётную запись и разрешите '
-              'доступ — окно закроется само.',
-              style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.45),
-            ),
-          ),
-        ]),
-        const SizedBox(height: 20),
-        Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-          NxGhostButton(label: 'Отменить', onTap: _cancelGoogle),
-        ]),
-      ]);
+  Widget _oauth(NxThemeData t, NxPalette p) {
+    if (_oauthWait != null) {
+      return _waiting(t, p, 'Ждём разрешения в браузере. Выберите учётную '
+          'запись и разрешите доступ — окно закроется само.', _cancelOAuth);
     }
+
+    final yandex = provider == CloudProvider.yandex;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (!_clientReady) ...[
         Text(
-          'Google не пускает к Диску по паролю — только через разрешение в '
-          'браузере, и только приложению, которое он знает. Зарегистрируйте '
-          'его один раз в Google Cloud Console: создайте проект, включите '
-          'Drive API, настройте экран согласия и создайте учётные данные '
-          'типа «Desktop app».',
-          style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12, height: 1.5),
+          yandex
+              ? 'WebDAV Яндекс оставил платным подпискам, поэтому работаем '
+                  'по их API — а он ходит по разрешению из браузера. Выданному '
+                  'приложению, которое надо один раз зарегистрировать.'
+              : 'Google не пускает к Диску по паролю — только через разрешение '
+                  'в браузере, и только приложению, которое он знает.',
+          style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12, height: 1.45),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 9),
         Align(
           alignment: Alignment.centerLeft,
           child: NxGhostButton(
-            label: 'Открыть Cloud Console',
+            label: yandex ? 'Зарегистрировать приложение' : 'Открыть Cloud Console',
             icon: Icons.open_in_new_rounded,
-            onTap: () => launchUrl(
-              Uri.parse('https://console.cloud.google.com/apis/credentials'),
-              mode: LaunchMode.externalApplication,
-            ),
+            onTap: () => launchUrl(Uri.parse(provider.consoleUrl),
+                mode: LaunchMode.externalApplication),
           ),
         ),
-        const SizedBox(height: 14),
-        _label('Идентификатор клиента', p),
-        NxField(controller: _clientId, hint: '…apps.googleusercontent.com'),
-        const SizedBox(height: 12),
-        _label('Секрет клиента', p),
-        NxField(controller: _clientSecret, hint: 'GOCSPX-…', obscure: true),
-        const SizedBox(height: 8),
-        Text(
-          'Пока приложение в Cloud Console не опубликовано, Google считает '
-          'разрешение временным и просит войти заново примерно раз в неделю.',
-          style: NxType.caption.copyWith(color: p.faint, fontSize: 10.5, height: 1.4),
-        ),
+        if (yandex) ...[
+          const SizedBox(height: 9),
+          Text(
+            'Там нужны права «Яндекс.Диск: чтение и запись» и «Доступ к логину», '
+            'а в поле Redirect URI — адрес ниже, ровно как написан.',
+            style: NxType.caption.copyWith(color: p.faint, fontSize: 10.5, height: 1.4),
+          ),
+        ],
+        const SizedBox(height: 13),
+        _label('Идентификатор приложения', p),
+        NxField(controller: _clientId,
+            hint: yandex ? '32 знака' : '…apps.googleusercontent.com'),
+        const SizedBox(height: 11),
+        _label('Пароль приложения', p),
+        NxField(controller: _clientSecret, hint: '••••••••', obscure: true),
+        if (yandex) ...[
+          const SizedBox(height: 11),
+          _label('Порт возврата', p),
+          NxField(controller: _port, hint: '8899'),
+          const SizedBox(height: 6),
+          Text(
+            'Redirect URI: http://127.0.0.1:${_port.text.trim().isEmpty ? '8899' : _port.text.trim()}',
+            style: NxType.numeric.copyWith(color: p.sub, fontSize: 11),
+          ),
+        ] else ...[
+          const SizedBox(height: 8),
+          Text(
+            'Пока приложение в Cloud Console не опубликовано, Google просит '
+            'входить заново примерно раз в неделю.',
+            style: NxType.caption.copyWith(color: p.faint, fontSize: 10.5, height: 1.4),
+          ),
+        ],
       ] else
         Text(
-          'Разрешение выдаётся в браузере: выберите учётную запись Google и '
-          'подтвердите доступ к Диску.',
-          style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.5),
+          yandex
+              ? 'Разрешение выдаётся в браузере: подтвердите доступ к Диску.'
+              : 'Разрешение выдаётся в браузере: выберите учётную запись Google '
+                  'и подтвердите доступ к Диску.',
+          style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.45),
         ),
       if (_error != null) ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: 11),
         _errorBox(),
       ],
-      const SizedBox(height: 18),
+      const SizedBox(height: 16),
       Row(children: [
         if (_clientReady)
           NxGhostButton(
-            label: 'Изменить клиента',
+            label: 'Изменить',
             icon: Icons.tune_rounded,
             onTap: _busy ? null : () => setState(() => _clientReady = false),
           ),
@@ -391,121 +434,108 @@ class _LoginBodyState extends State<_LoginBody> {
           label: 'Отмена',
           onTap: _busy ? null : () => Navigator.of(context).pop(false),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 9),
         if (_clientReady)
           GradientButton(
             label: _busy ? 'Открываем…' : 'Войти через браузер',
-            onTap: _busy ? null : _connectGoogle,
+            onTap: _busy ? null : _connectOAuth,
           )
         else
-          GradientButton(label: 'Сохранить', onTap: _busy ? null : _saveGoogleClient),
+          GradientButton(label: 'Сохранить', onTap: _busy ? null : _saveClient),
       ]),
     ]);
   }
 
-  Widget _errorBox() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: NxPalette.danger.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(NxRadius.tile),
-        border: Border.all(color: NxPalette.danger.withValues(alpha: 0.45)),
-      ),
-      child: Text(_error!,
-          style: NxType.bodyText.copyWith(
-              color: NxPalette.danger, fontSize: 12, height: 1.4)),
-    );
-  }
-
-  Widget _waiting(NxThemeData t, NxPalette p) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: t.accent.a2),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Ждём подтверждения в браузере. Разрешите доступ на открывшейся '
-                'странице — окно закроется само.',
-                style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.45),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 20),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            NxGhostButton(label: 'Отменить', onTap: _cancelFlow),
-          ]),
-        ],
-      );
+  Widget _waiting(NxThemeData t, NxPalette p, String text, VoidCallback onCancel) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2, color: t.accent.a2),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(text,
+                style: NxType.bodyText.copyWith(
+                    color: p.sub, fontSize: 12.5, height: 1.45)),
+          ),
+        ]),
+        const SizedBox(height: 18),
+        Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+          NxGhostButton(label: 'Отменить', onTap: onCancel),
+        ]),
+      ]);
 
   Widget _form(NxThemeData t, NxPalette p) {
     final fixed = provider.fixedServer;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (fixed == null) ...[
-          _label('Адрес сервера', p),
-          NxField(controller: _server, hint: 'cloud.example.com'),
-          const SizedBox(height: 12),
-        ] else ...[
-          Text('Адрес: ${fixed.host}',
-              style: NxType.numeric.copyWith(color: p.faint, fontSize: 11)),
-          const SizedBox(height: 12),
-        ],
-        _label('Логин', p),
-        NxField(controller: _login, hint: provider.loginHint),
-        const SizedBox(height: 12),
-        _label('Пароль приложения', p),
-        NxField(controller: _password, hint: '••••••••', obscure: true),
-        const SizedBox(height: 6),
-        Text(
-          provider.passwordHint,
-          style: NxType.caption.copyWith(color: p.faint, fontSize: 10.5, height: 1.4),
-        ),
-        if (fixed == null) ...[
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-              child: Text('Доверять сертификату сервера',
-                  style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
-            ),
-            NxToggle(
-              value: _trustCertificate,
-              onChanged: (v) => setState(() => _trustCertificate = v),
-            ),
-          ]),
-        ],
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          _errorBox(),
-        ],
-        const SizedBox(height: 18),
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (fixed == null) ...[
+        _label('Адрес сервера', p),
+        NxField(controller: _server, hint: 'cloud.example.com'),
+        const SizedBox(height: 11),
+      ],
+      _label('Логин', p),
+      NxField(controller: _login, hint: provider.loginHint),
+      const SizedBox(height: 11),
+      _label('Пароль приложения', p),
+      NxField(controller: _password, hint: '••••••••', obscure: true),
+      const SizedBox(height: 6),
+      Text(
+        provider.passwordHint,
+        style: NxType.caption.copyWith(color: p.faint, fontSize: 10.5, height: 1.4),
+      ),
+      if (fixed == null) ...[
+        const SizedBox(height: 11),
         Row(children: [
-          if (provider.hasBrowserLogin)
-            NxGhostButton(
-              label: 'Через браузер',
-              icon: Icons.open_in_browser_rounded,
-              onTap: _busy ? null : _connectViaBrowser,
-            ),
-          const Spacer(),
-          NxGhostButton(
-            label: 'Отмена',
-            onTap: _busy ? null : () => Navigator.of(context).pop(false),
+          Expanded(
+            child: Text('Доверять сертификату сервера',
+                style: NxType.bodyText.copyWith(color: p.body, fontSize: 12.5)),
           ),
-          const SizedBox(width: 10),
-          GradientButton(
-            label: _busy ? 'Проверяем…' : 'Подключить',
-            onTap: _busy ? null : _connect,
+          NxToggle(
+            value: _trustCertificate,
+            onChanged: (v) => setState(() => _trustCertificate = v),
           ),
         ]),
       ],
-    );
+      if (_error != null) ...[
+        const SizedBox(height: 11),
+        _errorBox(),
+      ],
+      const SizedBox(height: 16),
+      Row(children: [
+        if (provider.hasBrowserLogin)
+          NxGhostButton(
+            label: 'Через браузер',
+            icon: Icons.open_in_browser_rounded,
+            onTap: _busy ? null : _connectViaBrowser,
+          ),
+        const Spacer(),
+        NxGhostButton(
+          label: 'Отмена',
+          onTap: _busy ? null : () => Navigator.of(context).pop(false),
+        ),
+        const SizedBox(width: 9),
+        GradientButton(
+          label: _busy ? 'Проверяем…' : 'Подключить',
+          onTap: _busy ? null : _connect,
+        ),
+      ]),
+    ]);
   }
+
+  Widget _errorBox() => Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: NxPalette.danger.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(NxRadius.tile),
+          border: Border.all(color: NxPalette.danger.withValues(alpha: 0.45)),
+        ),
+        child: Text(_error!,
+            style: NxType.bodyText.copyWith(
+                color: NxPalette.danger, fontSize: 12, height: 1.4)),
+      );
 
   Widget _label(String text, NxPalette p) => Padding(
         padding: const EdgeInsets.only(bottom: 6),

@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../services/backend_factory.dart';
 import '../services/credentials_store.dart';
 import '../services/google/google_auth.dart';
+import '../services/yandex/yandex_auth.dart';
 import '../services/prefs.dart';
 import '../services/webdav_client.dart';
 import 'session.dart';
@@ -50,6 +51,17 @@ class AppState extends ChangeNotifier {
 
   Future<void> saveGoogleClient(String id, String secret) async {
     await _prefs.writeGoogleClient(id, secret);
+    notifyListeners();
+  }
+
+  /// Учётные данные приложения Яндекса из настроек.
+  YandexClientId get yandexClient {
+    final saved = _prefs.readYandexClient();
+    return YandexClientId(id: saved.id, secret: saved.secret, port: saved.port);
+  }
+
+  Future<void> saveYandexClient(String id, String secret, int port) async {
+    await _prefs.writeYandexClient(id, secret, port);
     notifyListeners();
   }
 

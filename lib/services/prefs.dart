@@ -32,6 +32,9 @@ class Prefs {
   static const _hotkey = 'hotkey.enabled';
   static const _googleId = 'google.clientId';
   static const _googleSecret = 'google.clientSecret';
+  static const _yandexId = 'yandex.clientId';
+  static const _yandexSecret = 'yandex.clientSecret';
+  static const _yandexPort = 'yandex.port';
   static const _winW = 'window.width';
   static const _winH = 'window.height';
   static const _winX = 'window.x';
@@ -146,6 +149,21 @@ class Prefs {
   Future<void> writeGoogleClient(String id, String secret) async {
     await _p.setString(_googleId, id.trim());
     await _p.setString(_googleSecret, secret.trim());
+  }
+
+  /// Учётные данные приложения в Яндексе. Порт хранится вместе с ними:
+  /// Яндекс сверяет адрес возврата с записанным у приложения, поэтому он
+  /// должен совпадать с тем, что указано в его настройках.
+  ({String id, String secret, int port}) readYandexClient() => (
+        id: _p.getString(_yandexId) ?? '',
+        secret: _p.getString(_yandexSecret) ?? '',
+        port: _p.getInt(_yandexPort) ?? 8899,
+      );
+
+  Future<void> writeYandexClient(String id, String secret, int port) async {
+    await _p.setString(_yandexId, id.trim());
+    await _p.setString(_yandexSecret, secret.trim());
+    await _p.setInt(_yandexPort, port);
   }
 
   // ----------------------------------------------------------------- окно
