@@ -91,6 +91,42 @@
         nimbus:sha256="c3232b2f4c80d827f13d73fc604c1f8b31a3b6e31298f34d7714d50337cbad09" />
     </item>
 
+    <item>
+      <title>Nexus Nimbus 0.3.0</title>
+      <pubDate>Mon, 07 Sep 2026 16:43:37 +0000</pubDate>
+      <sparkle:version>0.3.0</sparkle:version>
+      <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+      <description><![CDATA[
+        <style>
+          html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#F2F4F8;}
+          a{color:#3F63D1;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Три облака сразу: Nextcloud, Google Drive и Яндекс.Диск — несколько учётных записей в одном окне.</li>
+          <li>Двусторонняя синхронизация закреплённых папок и разрешение расхождений.</li>
+          <li>Правка на месте: открыли файл, сохранили — изменения уезжают на сервер сами.</li>
+          <li>Избранное, поиск по всему серверу, публичные ссылки и версии файлов.</li>
+          <li>Значок в трее, автозапуск и горячая клавиша вызова окна.</li>
+          <li>Своё окно обновления вместо системного: «Пропустить версию» больше не отметка в реестре навсегда.</li>
+          <li>Новая иконка приложения.</li>
+          <li>Обновление теперь ставится молча — как обычный перезапуск, без мастера установки.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.0/NexusNimbus-Setup-0.3.0.exe"
+        sparkle:version="0.3.0"
+        sparkle:os="windows"
+        length="13088184"
+        type="application/octet-stream"
+        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /RELAUNCH=1"
+        sparkle:dsaSignature="MDwCHE+MLVxNRl4+4/GCWeYANgbZ6p621k0Z47iFR1QCHCooaQITB+fUViM7g+FklBEdKb6dkz/CJgz6ddA="
+        nimbus:sha256="9c94bacf9298e8765a24705cbc98c9ff7225bc3551c2db068bbb8df9b26ffa45" />
+    </item>
+
     <!-- NIMBUS:NEXT-RELEASE -->
   </channel>
 </rss>
