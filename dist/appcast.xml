@@ -127,6 +127,39 @@
         nimbus:sha256="9c94bacf9298e8765a24705cbc98c9ff7225bc3551c2db068bbb8df9b26ffa45" />
     </item>
 
+    <item>
+      <title>Nexus Nimbus 0.3.1</title>
+      <pubDate>Mon, 07 Sep 2026 17:30:27 +0000</pubDate>
+      <sparkle:version>0.3.1</sparkle:version>
+      <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
+      <description><![CDATA[
+        <style>
+          html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#F2F4F8;}
+          a{color:#3F63D1;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Светлая тема с фоном «Шейдер» стала читаемой: у текста появилась обводка, панели плотнее.</li>
+          <li>Фон «Шейдер» приведён к «Авроре» — светит снизу и гаснет кверху, а не заливает всё окно.</li>
+          <li>Панель учётных записей больше не вылезает за границу боковой полосы.</li>
+          <li>Убрана графа «Анимации» из настроек.</li>
+          <li>Обновление наконец ставится молча: мешал мьютекс в установщике.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.1/NexusNimbus-Setup-0.3.1.exe"
+        sparkle:version="0.3.1"
+        sparkle:os="windows"
+        length="13088037"
+        type="application/octet-stream"
+        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
+        sparkle:dsaSignature="MDwCHGMHlI/L7p5x7ToqwM3KDKJLeMh76qebat5qLrMCHDiCuJkoKPhJ3RU31vvX/tC9eVG+QwAdzycD9Tg="
+        nimbus:sha256="4c6040c2f0e5bd6c4e68e7a261e91654a69ed82634cbf1ec1f83e528c79e8f6a" />
+    </item>
+
     <!-- NIMBUS:NEXT-RELEASE -->
   </channel>
 </rss>
