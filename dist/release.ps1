@@ -100,6 +100,16 @@ $items = ($Notes | ForEach-Object { "          <li>$([System.Security.SecurityEl
 # Ссылка пишется на GitHub Releases; publish-to-station.ps1 при выкладке на
 # станцию перепишет её на адрес станции сам.
 $url = "https://github.com/kekw2077/nexus-nimbus/releases/download/v$Version/NexusNimbus-Setup-$Version.exe"
+# Ключи, с которыми WinSparkle запустит установщик. Без них он запускает его
+# как есть, и человек вместо перезапуска получает полный мастер установки.
+#   /VERYSILENT        — без окон мастера
+#   /SUPPRESSMSGBOXES  — без вопросов, на которые некому отвечать
+#   /NORESTART         — не предлагать перезагрузку Windows
+#   /SP-               — без вступительного "This will install..."
+#   /RELAUNCH=1        — наш ключ: поднять новую версию после установки
+# Папку не передаём: Inno берёт её из прошлой установки (UsePreviousAppDir).
+$installerArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /RELAUNCH=1'
+
 $pubDate = (Get-Date).ToUniversalTime().ToString('ddd, dd MMM yyyy HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture) + ' +0000'
 
 $item = @"
@@ -127,6 +137,7 @@ $items
         sparkle:os="windows"
         length="$($signed.Length)"
         type="application/octet-stream"
+        sparkle:installerArguments="$installerArgs"
         sparkle:dsaSignature="$($signed.Signature)"
         nimbus:sha256="$($signed.Sha256)" />
     </item>

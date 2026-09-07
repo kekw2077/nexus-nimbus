@@ -85,7 +85,7 @@ lib/
 └─ app.dart, main.dart
 
 dist/                           выпуск: installer.iss, appcast.xml, скрипты
-assets/icon/gen_icon.py         иконка и графика мастера из тех же токенов
+nexus_icon/                     иконки: exe, ярлык, трей, установщик
 ```
 
 ### Точки Nextcloud, которые используются
