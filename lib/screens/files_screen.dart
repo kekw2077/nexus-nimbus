@@ -692,7 +692,9 @@ class _Toolbar extends StatelessWidget {
           const Spacer(),
           Text(
             _summary(s),
-            style: NxType.numeric.copyWith(color: p.faint, fontSize: 11),
+            // Не faint: строка лежит на живом фоне, а не на панели.
+            style: NxType.numeric
+                .copyWith(color: p.sub, fontSize: 11, shadows: t.textHalo),
           ),
         ]),
         if (s.transfers.activeCount > 0) ...[

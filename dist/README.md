@@ -42,6 +42,40 @@ Flutter, изменения в оболочке окна. Установщик �
 Репозиторий обязан быть **публичным**: `raw.githubusercontent` и файлы релизов
 отдаются анонимно только из публичного, а авторизоваться WinSparkle не умеет.
 
+## Что нужно на машине сборки
+
+- **Flutter** с включённой поддержкой Windows.
+- **Visual Studio Build Tools** (полная среда не нужна) с рабочей нагрузкой
+  «Разработка классических приложений на C++». Ставится без интерфейса:
+
+  ```powershell
+  # Установщик: aka.ms/vs/17/release/vs_BuildTools.exe
+  # Канал 18 по такому же адресу отдаёт HTML-страницу, а не файл.
+  .\vs_BuildTools.exe --installPath "F:\vs code components\BuildTools" `
+    --add Microsoft.VisualStudio.Workload.VCTools `
+    --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+    --add Microsoft.VisualStudio.Component.VC.CMake.Project `
+    --add Microsoft.VisualStudio.Component.VC.ATL `
+    --includeRecommended --passive --norestart --wait
+  ```
+
+  **`VC.ATL` обязателен, хотя `--includeRecommended` его не тянет.**
+  Без него сборка падает на `flutter_secure_storage_windows`:
+  `error C1083: atlstr.h: No such file or directory`. Пароль хранится в
+  Credential Manager через этот пакет, так что выкинуть его нельзя.
+
+- **Inno Setup 6** — для установщика.
+- **openssl** — для подписи; годится тот, что идёт с Git for Windows.
+- **Rust** — его подтягивает cargokit сам, при первой сборке
+  `super_native_extensions` (перетаскивание файлов наружу). Отдельно ставить
+  не нужно, но первая сборка из-за этого заметно дольше.
+
+Проверить готовность: `flutter doctor` должен показать галочку на
+Visual Studio. Он ищет установки через `vswhere`, а тот читает
+`C:\ProgramData\Microsoft\VisualStudio\Packages\_Instances`. Если эту папку
+удалить чистильщиком диска, Visual Studio останется на месте, но для Flutter
+исчезнет — вернуть учёт можно только переустановкой.
+
 ## Выпуск новой версии
 
 ```powershell

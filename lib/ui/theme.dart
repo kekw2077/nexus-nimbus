@@ -25,6 +25,10 @@ class NxThemeData {
   final NxAnim anim;
 
   NxPalette get palette => brightness == Brightness.dark ? NxPalette.dark : NxPalette.light;
+
+  /// Обводка под текстом поверх живого фона. Берётся из палитры,
+  /// поэтому в тёмной теме она тёмная, в светлой — светлая.
+  List<Shadow> get textHalo => nxHalo(palette.halo);
   Color get card => glass.card(brightness);
   double get blur => glass.blur;
 

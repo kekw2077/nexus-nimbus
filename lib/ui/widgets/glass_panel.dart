@@ -97,11 +97,22 @@ class GradientText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final g = gradient ?? NxTheme.of(context).accent.sweep;
-    return ShaderMask(
-      blendMode: BlendMode.srcIn,
-      shaderCallback: (rect) => g.createShader(rect),
-      child: Text(text, style: style.copyWith(color: Colors.white)),
-    );
+    final t = NxTheme.of(context);
+    final g = gradient ?? t.accent.sweep;
+
+    // Обводку нельзя отдать внутрь ShaderMask: srcIn красит градиентом всё
+    // непрозрачное, включая её. Поэтому она рисуется отдельным слоем под
+    // текстом — сами буквы прозрачные, видна только обводка.
+    return Stack(children: [
+      Text(
+        text,
+        style: style.copyWith(color: const Color(0x00000000), shadows: t.textHalo),
+      ),
+      ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (rect) => g.createShader(rect),
+        child: Text(text, style: style.copyWith(color: Colors.white)),
+      ),
+    ]);
   }
 }

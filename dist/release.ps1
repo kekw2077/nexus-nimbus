@@ -57,8 +57,15 @@ if (-not $SkipBuild) {
   Step 'flutter build windows --release'
   Push-Location $root
   try {
-    & flutter build windows --release
-    if ($LASTEXITCODE -ne 0) { throw "Сборка не прошла (код $LASTEXITCODE)" }
+    # Вывод сборки пишем ещё и в файл. Иначе упавшая сборка выглядит как
+    # голое «код 1»: вызывающий обычно обрезает вывод, а причина — где-то
+    # в середине, среди сотен строк компиляции.
+    $buildLog = Join-Path (Join-Path $dist 'out') 'build.log'
+    New-Item -ItemType Directory -Force (Split-Path $buildLog) | Out-Null
+    & flutter build windows --release 2>&1 | Tee-Object -FilePath $buildLog | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+      throw "Сборка не прошла (код $LASTEXITCODE). Полный вывод: $buildLog"
+    }
   } finally { Pop-Location }
 }
 
@@ -107,8 +114,10 @@ $url = "https://github.com/kekw2077/nexus-nimbus/releases/download/v$Version/Nex
 #   /NORESTART         — не предлагать перезагрузку Windows
 #   /SP-               — без вступительного "This will install..."
 #   /RELAUNCH=1        — наш ключ: поднять новую версию после установки
+#   /LOG               — журнал в %TEMP%: тихая установка молчит и об удаче,
+#                        и о провале, и без журнала разбираться не с чем
 # Папку не передаём: Inno берёт её из прошлой установки (UsePreviousAppDir).
-$installerArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /RELAUNCH=1'
+$installerArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1'
 
 $pubDate = (Get-Date).ToUniversalTime().ToString('ddd, dd MMM yyyy HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture) + ' +0000'
 

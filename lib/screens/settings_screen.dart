@@ -142,7 +142,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         GradientText('Настройки', style: NxType.title),
         const SizedBox(height: 3),
         Text('Оформление, хранилище, обновления и подключение',
-            style: NxType.caption.copyWith(color: p.sub)),
+            style: NxType.caption.copyWith(color: p.sub, shadows: t.textHalo)),
         const SizedBox(height: 16),
         Expanded(
           child: ListView(children: [
@@ -306,28 +306,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       'Шейдер' => NxBackground.shader,
                       'Нет' => NxBackground.off,
                       _ => NxBackground.aurora,
-                    },
-                  ),
-                ),
-              ),
-            ),
-            _Row(
-              label: 'Анимации',
-              child: NxSegmented(
-                options: const ['Дыхание', 'Поток', 'Экономия'],
-                value: switch (t.anim) {
-                  NxAnim.breathe => 'Дыхание',
-                  NxAnim.flow || NxAnim.pulse => 'Поток',
-                  NxAnim.off => 'Экономия',
-                },
-                compact: true,
-                onChanged: (v) => NxTheme.set(
-                  context,
-                  t.copyWith(
-                    anim: switch (v) {
-                      'Поток' => NxAnim.flow,
-                      'Экономия' => NxAnim.off,
-                      _ => NxAnim.breathe,
                     },
                   ),
                 ),
@@ -742,16 +720,21 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
+    final t = NxTheme.of(context);
+    final p = t.palette;
     return Padding(
       padding: const EdgeInsets.only(bottom: 13),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: NxType.bodyText.copyWith(color: p.body, fontSize: 13)),
+            Text(label,
+                style: NxType.bodyText
+                    .copyWith(color: p.body, fontSize: 13, shadows: t.textHalo)),
             if (hint != null) ...[
               const SizedBox(height: 2),
-              Text(hint!, style: NxType.caption.copyWith(color: p.faint, fontSize: 11)),
+              Text(hint!,
+                  style: NxType.caption
+                      .copyWith(color: p.faint, fontSize: 11, shadows: t.textHalo)),
             ],
           ]),
         ),
@@ -973,18 +956,22 @@ class _Info extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = NxTheme.of(context).palette;
+    final t = NxTheme.of(context);
+    final p = t.palette;
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SizedBox(
           width: 176,
-          child: Text(label, style: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5)),
+          child: Text(label,
+              style: NxType.bodyText
+                  .copyWith(color: p.sub, fontSize: 12.5, shadows: t.textHalo)),
         ),
         Expanded(
           child: SelectableText(
             value,
-            style: NxType.numeric.copyWith(color: p.body, fontSize: 11.5, height: 1.4),
+            style: NxType.numeric.copyWith(
+                color: p.body, fontSize: 11.5, height: 1.4, shadows: t.textHalo),
           ),
         ),
       ]),

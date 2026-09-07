@@ -11,10 +11,17 @@ class SectionLabel extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => Text(
-        text.toUpperCase(),
-        style: NxType.section.copyWith(color: NxTheme.of(context).palette.faint, fontSize: size),
-      );
+  Widget build(BuildContext context) {
+    final t = NxTheme.of(context);
+    return Text(
+      text.toUpperCase(),
+      style: NxType.section.copyWith(
+        color: t.palette.faint,
+        fontSize: size,
+        shadows: t.textHalo,
+      ),
+    );
+  }
 }
 
 /// Переключатель 46×26 с белым бегунком.

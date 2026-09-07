@@ -115,15 +115,29 @@ class _ShaderAuroraState extends State<_ShaderAurora> with SingleTickerProviderS
     if (s == null) return const _Blobs();
     return IgnorePointer(
       child: Opacity(
-        opacity: t.palette.auroraOpacity * 0.85,
-        child: ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
-          child: CustomPaint(
-            size: Size.infinite,
-            painter: _ShaderPainter(
-              shader: s,
-              time: _elapsed.inMilliseconds / 1000 * (t.anim == NxAnim.off ? 0 : 1),
-              accent: t.accent,
+        opacity: t.palette.auroraOpacity,
+        child: ShaderMask(
+          // Шейдер заливает кадр целиком, а «Аврора» рядом светит только
+          // снизу: её пятна лежат ниже нижнего края и гаснут кверху. Гасим
+          // так же, иначе один и тот же интерфейс в двух режимах фона
+          // выглядит по-разному, а сверху, где почти весь текст, цвет
+          // ещё и мешает читать.
+          blendMode: BlendMode.dstIn,
+          shaderCallback: (rect) => const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x00000000), Color(0x00000000), Color(0xFF000000)],
+            stops: [0, 0.32, 1],
+          ).createShader(rect),
+          child: ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: _ShaderPainter(
+                shader: s,
+                time: _elapsed.inMilliseconds / 1000 * (t.anim == NxAnim.off ? 0 : 1),
+                accent: t.accent,
+              ),
             ),
           ),
         ),

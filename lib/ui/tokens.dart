@@ -12,6 +12,7 @@ class NxPalette {
     required this.hover, required this.chip, required this.btn, required this.btnText,
     required this.dot, required this.accentSoft, required this.accentStrong, required this.accentLine,
     required this.auroraOpacity, required this.shadow, required this.glowColor,
+    required this.halo,
   });
 
   final Color bg, card, solid, txt, body, sub, faint;
@@ -20,6 +21,13 @@ class NxPalette {
   final double auroraOpacity;
   final List<BoxShadow> shadow;
   final Color glowColor;
+
+  /// Цвет обводки под текстом. Фон живой — аврора и шейдер гуляют
+  /// цветом под всем окном, — и одного цвета букв не хватает: на
+  /// светлом пятне тёмный текст сливается ровно так же, как светлый
+  /// на ярком. Обводка держит контраст независимо от того, что
+  /// оказалось под буквами.
+  final Color halo;
 
   static const ok = Color(0xFF34D399);
   static const warn = Color(0xFFF5B944);
@@ -51,16 +59,19 @@ class NxPalette {
     auroraOpacity: 0.9,
     shadow: [BoxShadow(color: Color(0x80000000), offset: Offset(0, 24), blurRadius: 64)],
     glowColor: Color(0x6B9B72CB),
+    halo: Color(0xD90A0C11),
   );
 
   static const light = NxPalette(
     bg: Color(0xFFEEF2F8),
-    card: Color(0x70FFFFFF),
+    // Плотнее прототипных 0x70: сквозь 44% белого шейдер бьёт так,
+    // что подписи на панели перестают читаться.
+    card: Color(0xC2FFFFFF),
     solid: Color(0xFFFFFFFF),
     txt: Color(0xFF17181B),
     body: Color(0xFF42464E),
-    sub: Color(0xFF5F6470),
-    faint: Color(0xFF8B9099),
+    sub: Color(0xFF4A4F5A),
+    faint: Color(0xFF6E7480),
     stroke: Color(0xFFD2DAE8),
     stroke2: Color(0xFFB8C2D2),
     field: Color(0x09121E37),
@@ -78,6 +89,7 @@ class NxPalette {
       BoxShadow(color: Color(0x12192D55), offset: Offset(0, 2), blurRadius: 6),
     ],
     glowColor: Color(0x4D9B72CB),
+    halo: Color(0xE6FFFFFF),
   );
 }
 
@@ -145,6 +157,15 @@ class NxMotion {
 
 /// Типографика. Шрифты: Figtree (интерфейс), JetBrains Mono (числа, коды).
 /// Проще всего через пакет google_fonts, либо положить .ttf в assets/fonts.
+/// Обводка текста: два прохода одним цветом, без смещения. Один узкий
+/// даёт саму обводку, второй пошире — мягкий подпор, чтобы буквы не
+/// выглядели наклейкой. Смещения нет намеренно: тень увела бы текст
+/// вбок, а нужна именно обводка.
+List<Shadow> nxHalo(Color color) => [
+      Shadow(color: color, blurRadius: 2),
+      Shadow(color: color, blurRadius: 7),
+    ];
+
 class NxType {
   static const ui = 'Figtree';
   static const mono = 'JetBrains Mono';

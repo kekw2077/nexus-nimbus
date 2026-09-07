@@ -341,7 +341,9 @@ class _SidebarCardState extends State<SidebarCard> {
       duration: NxMotion.hover,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: p.solid.withValues(alpha: live && _hover ? 0.9 : 0.72),
+        // Плотнее прежних 0.72: на светлой теме шейдер бил сквозь карточку
+        // и подписи под ним терялись.
+        color: p.solid.withValues(alpha: live && _hover ? 0.96 : 0.86),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: live && _hover ? t.accent.a2.withValues(alpha: 0.55) : p.stroke,
