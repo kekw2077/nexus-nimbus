@@ -187,6 +187,19 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    // Restart Manager просит закрыться — так установщик обновления
+    // освобождает занятые файлы. Без ответа он ждёт таймаут (около
+    // полуминуты) и убивает процесс силой; всё это время человек видит
+    // застывшее окно и думает, что обновление зависло.
+    case WM_QUERYENDSESSION:
+      return TRUE;  // закрыться можем
+
+    case WM_ENDSESSION:
+      if (wparam) {
+        DestroyWindow(hwnd);
+      }
+      return 0;
+
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;

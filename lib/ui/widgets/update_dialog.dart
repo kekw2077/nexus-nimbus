@@ -5,6 +5,7 @@ import '../../services/updater.dart';
 import '../theme.dart';
 import '../tokens.dart';
 import 'controls.dart';
+import 'dialogs.dart';
 import 'glass_panel.dart';
 
 /// Предложение обновиться — в оформлении приложения, а не в окне WinSparkle.
@@ -152,8 +153,22 @@ class _UpdateBody extends StatelessWidget {
           GradientButton(
             label: 'Обновить',
             icon: Icons.download_rounded,
-            onTap: () {
-              Navigator.of(context).pop();
+            // Спрашиваем ещё раз перед самой установкой. Дальше программа
+            // закроется без предупреждения — а закрыть её посреди правки
+            // файла обиднее, чем лишний раз нажать кнопку.
+            onTap: () async {
+              final navigator = Navigator.of(context);
+              final ok = await confirm(
+                context,
+                title: 'Обновить сейчас?',
+                message: 'Программа закроется и через несколько секунд '
+                    'откроется заново уже новой версии. Если что-то открыто '
+                    'на правку — сохраните перед обновлением.',
+                confirmLabel: 'Обновить и перезапустить',
+                danger: false,
+              );
+              if (!ok) return;
+              navigator.pop();
               updater.install();
             },
           ),

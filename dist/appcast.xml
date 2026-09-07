@@ -160,6 +160,37 @@
         nimbus:sha256="4c6040c2f0e5bd6c4e68e7a261e91654a69ed82634cbf1ec1f83e528c79e8f6a" />
     </item>
 
+    <item>
+      <title>Nexus Nimbus 0.3.2</title>
+      <pubDate>Mon, 07 Sep 2026 17:56:02 +0000</pubDate>
+      <sparkle:version>0.3.2</sparkle:version>
+      <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
+      <description><![CDATA[
+        <style>
+          html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#F2F4F8;}
+          a{color:#3F63D1;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Перед обновлением спрашиваем подтверждение: программа закроется и откроется заново.</li>
+          <li>Программа снова открывается сама после обновления — прежде она молча закрывалась.</li>
+          <li>Обновление больше не висит полминуты: окно теперь отвечает установщику на просьбу закрыться.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.2/NexusNimbus-Setup-0.3.2.exe"
+        sparkle:version="0.3.2"
+        sparkle:os="windows"
+        length="13090908"
+        type="application/octet-stream"
+        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
+        sparkle:dsaSignature="MDwCHEPho9YfGquWFD1hkXAMSoGQ/XTWOC2WcM3qizYCHEGypZAVlusWD4YW0Lt0xPtHZIjxXgayBgDbHJA="
+        nimbus:sha256="52baa3f37a8e5f549c8834cec6113a52d50335c6e2b3bd862f0b774b2ba70ad9" />
+    </item>
+
     <!-- NIMBUS:NEXT-RELEASE -->
   </channel>
 </rss>
