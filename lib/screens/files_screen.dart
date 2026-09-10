@@ -465,12 +465,9 @@ class _FilesScreenState extends State<FilesScreen> {
     // а список файлов и кнопка «свернуть» остаются на экране.
     return LayoutBuilder(
       builder: (context, constraints) => Column(children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: WorkspacePanel(
-            markdown: workspace,
-            maxHeight: constraints.maxHeight * 0.55,
-          ),
+        WorkspacePanel(
+          markdown: workspace,
+          maxHeight: constraints.maxHeight * 0.55,
         ),
         Expanded(child: content),
       ]),

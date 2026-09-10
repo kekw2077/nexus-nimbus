@@ -4,15 +4,17 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
 import '../tokens.dart';
-import 'glass_panel.dart';
 
 /// Описание папки — её README.md, который сервер отдаёт свойством
 /// `nc:rich-workspace`. Веб-интерфейс показывает его шапкой над списком;
-/// здесь он занимает то же место, но сворачивается: описание полезно,
-/// когда его читают, и мешает, когда пришли за файлами.
+/// здесь оно занимает то же место — внутри панели с файлами, над шапкой
+/// колонок, и отделено от списка той же линией, что и шапка. Своего
+/// стекла у него нет: карточка в карточке читалась бы как другое окно,
+/// а это часть той же папки.
 ///
-/// Длинный текст свёрнут до нескольких строк и растворяется книзу —
-/// так видно, что там есть продолжение, и оно не съедает список.
+/// Сворачивается: описание полезно, когда его читают, и мешает, когда
+/// пришли за файлами. Длинный текст свёрнут до нескольких строк и
+/// растворяется книзу — так видно, что там есть продолжение.
 class WorkspacePanel extends StatefulWidget {
   const WorkspacePanel({super.key, required this.markdown, required this.maxHeight});
 
@@ -26,9 +28,13 @@ class WorkspacePanel extends StatefulWidget {
   /// До какой высоты ужимается свёрнутое описание.
   static const _collapsedHeight = 132.0;
 
-  /// Шапка панели с отступами — вычитается из потолка, чтобы он был
+  /// Шапка с отступами и линией — вычитается из потолка, чтобы он был
   /// потолком всей панели, а не только текста.
-  static const _chromeHeight = 64.0;
+  static const _chromeHeight = 66.0;
+
+  /// Текст стоит вровень с колонкой «Имя»: у шапки списка это отступ 12
+  /// плюс место под значок файла, 36.
+  static const _textInset = 48.0;
 
   @override
   State<WorkspacePanel> createState() => _WorkspacePanelState();
@@ -52,28 +58,35 @@ class _WorkspacePanelState extends State<WorkspacePanel> {
 
     final body = _Markdown(source: widget.markdown);
 
-    return GlassPanel(
-      radius: NxRadius.tile,
-      padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+    // Отступы те же, что у шапки колонок: 12 по краям, линия во всю
+    // ширину между ними.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Icon(Icons.subject_rounded, size: 13, color: p.faint),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                'ОПИСАНИЕ ПАПКИ',
-                style: NxType.section.copyWith(color: p.faint),
+          Padding(
+            // Значок стоит так, чтобы подпись начиналась вровень с текстом.
+            padding: const EdgeInsets.only(left: WorkspacePanel._textInset - 12 - 20),
+            child: Row(children: [
+              Icon(Icons.subject_rounded, size: 13, color: p.faint),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'ОПИСАНИЕ ПАПКИ',
+                  style: NxType.section.copyWith(color: p.faint),
+                ),
               ),
-            ),
-            _ToggleButton(
-              expanded: _expanded,
-              onTap: () => setState(() => _expanded = !_expanded),
-            ),
-          ]),
+              _ToggleButton(
+                expanded: _expanded,
+                onTap: () => setState(() => _expanded = !_expanded),
+              ),
+            ]),
+          ),
           const SizedBox(height: 10),
-          AnimatedSize(
+          Padding(
+            padding: const EdgeInsets.only(left: WorkspacePanel._textInset - 12, right: 36),
+            child: AnimatedSize(
             duration: NxMotion.hover,
             curve: NxMotion.curve,
             alignment: Alignment.topCenter,
@@ -91,7 +104,10 @@ class _WorkspacePanelState extends State<WorkspacePanel> {
                     height: WorkspacePanel._collapsedHeight,
                     child: body,
                   ),
+            ),
           ),
+          const SizedBox(height: 14),
+          Divider(height: 1, thickness: 1, color: p.stroke),
         ],
       ),
     );
