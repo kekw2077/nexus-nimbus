@@ -231,14 +231,19 @@ class _FileRowState extends State<FileRow> {
                 const SizedBox(width: 12),
                 Expanded(
                   flex: 5,
-                  child: Text(
-                    f.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: NxType.bodyText.copyWith(
-                      color: widget.selected ? p.txt : p.body,
-                      fontSize: 13,
-                      fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
+                  child: _maybeTooltip(
+                    // Сколько внутри папки — в строке места нет, но при
+                    // наведении сказать не жалко.
+                    f.isDir ? formatContents(folders: f.folderCount, files: f.fileCount) : null,
+                    Text(
+                      f.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: NxType.bodyText.copyWith(
+                        color: widget.selected ? p.txt : p.body,
+                        fontSize: 13,
+                        fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
+                      ),
                     ),
                   ),
                 ),
@@ -251,13 +256,15 @@ class _FileRowState extends State<FileRow> {
                       ? const Icon(Icons.star_rounded, size: 13, color: NxPalette.warn)
                       : const SizedBox.shrink(),
                 ),
-                // Признак «на это есть ссылка» — сервер отдаёт его правом S.
-                SizedBox(
-                  width: 18,
-                  child: f.isShared
-                      ? Icon(Icons.link_rounded, size: 13, color: t.accent.a2)
-                      : const SizedBox.shrink(),
-                ),
+                // Общий доступ. Право S говорит только «этим поделились со
+                // мной»; oc:share-types добавляет обратное — чем поделились
+                // мы и каким способом, и способ виден по значку.
+                SizedBox(width: 18, child: _ShareBadge(file: f)),
+                // Замок появляется, только когда файл занят: пустой столбец
+                // на каждой строке отнимал бы место у имени ради редкого
+                // случая. Правые колонки от этого не съезжают — они с
+                // жёсткой шириной.
+                if (f.isLocked) SizedBox(width: 18, child: _LockBadge(lock: f.lock!)),
                 SizedBox(
                   width: 26,
                   child: Center(child: PresenceBadge(presence: widget.presence, size: 14)),
@@ -282,10 +289,13 @@ class _FileRowState extends State<FileRow> {
                 const SizedBox(width: 18),
                 SizedBox(
                   width: 132,
-                  child: Text(
-                    dateColumn,
-                    textAlign: TextAlign.right,
-                    style: NxType.numeric.copyWith(color: p.faint, fontSize: 11),
+                  child: _maybeTooltip(
+                    task == null ? _datesTooltip(f) : null,
+                    Text(
+                      dateColumn,
+                      textAlign: TextAlign.right,
+                      style: NxType.numeric.copyWith(color: p.faint, fontSize: 11),
+                    ),
                   ),
                 ),
               ]),
@@ -293,6 +303,82 @@ class _FileRowState extends State<FileRow> {
           ]),
         ),
       ),
+    );
+  }
+}
+
+/// Подсказка, только если есть что сказать. Пустой Tooltip перехватывает
+/// мышь и мешает перетаскиванию, поэтому его лучше не создавать вовсе.
+Widget _maybeTooltip(String? message, Widget child) {
+  if (message == null || message.isEmpty) return child;
+  return Tooltip(
+    message: message,
+    waitDuration: const Duration(milliseconds: 500),
+    child: child,
+  );
+}
+
+/// Три даты сервера в одной подсказке. В колонке помещается одна —
+/// «изменён»; создание и заливка чаще всего совпадают с ней, но у
+/// принесённого откуда-то файла расходятся на годы.
+String? _datesTooltip(RemoteFile f) {
+  final lines = <String>[
+    'Изменён: ${formatDate(f.modified)}',
+    if (f.created != null) 'Создан: ${formatDate(f.created)}',
+    if (f.uploaded != null) 'Загружен: ${formatDate(f.uploaded)}',
+  ];
+  return lines.length == 1 ? null : lines.join('\n');
+}
+
+/// Общий доступ одним значком. Ссылка и почта уводят наружу, за пределы
+/// круга своих, — их и показываем заметнее; входящая раздача бледная,
+/// потому что это не наше решение, а чужое.
+class _ShareBadge extends StatelessWidget {
+  const _ShareBadge({required this.file});
+
+  final RemoteFile file;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = NxTheme.of(context);
+    final kinds = file.shareTypes;
+    if (kinds.isEmpty && !file.isShared) return const SizedBox.shrink();
+
+    final outward = kinds.contains(ShareKind.link) || kinds.contains(ShareKind.email);
+    final icon = outward
+        ? Icons.link_rounded
+        : kinds.isNotEmpty
+            ? Icons.people_alt_rounded
+            : Icons.people_outline_rounded;
+
+    return Tooltip(
+      message: kinds.isEmpty
+          ? 'Этим поделились с вами'
+          : 'Вы поделились ${kinds.map((k) => k.label).join(', ')}',
+      waitDuration: const Duration(milliseconds: 400),
+      child: Icon(icon, size: 13, color: kinds.isEmpty ? t.palette.faint : t.accent.a2),
+    );
+  }
+}
+
+/// Кто держит файл. Блокировка живёт на сервере и видна всем — значит,
+/// и причину, и срок стоит показать: иначе «занято» выглядит поломкой.
+class _LockBadge extends StatelessWidget {
+  const _LockBadge({required this.lock});
+
+  final FileLock lock;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = StringBuffer('Занят: ${lock.who}');
+    if (lock.byApp) text.write(' (приложение)');
+    final until = lock.expiresAt;
+    if (until != null) text.write('\nОсвободится ${formatDate(until)}');
+
+    return Tooltip(
+      message: text.toString(),
+      waitDuration: const Duration(milliseconds: 400),
+      child: const Icon(Icons.lock_rounded, size: 13, color: NxPalette.warn),
     );
   }
 }
@@ -368,7 +454,9 @@ class _FileTileState extends State<FileTile> {
     // На плитке места на одну строку — берём самое ходовое: скорость,
     // а пока её не замерили — проценты.
     final caption = task == null
-        ? (f.isDir ? 'Папка' : formatBytes(f.size))
+        ? (f.isDir
+            ? (formatContents(folders: f.folderCount, files: f.fileCount) ?? 'Папка')
+            : formatBytes(f.size))
         : speed > 0
             ? '${(task.fraction * 100).round()}% · ${formatSpeed(speed)}'
             : '${(task.fraction * 100).round()}%';
@@ -419,6 +507,12 @@ class _FileTileState extends State<FileTile> {
                     left: 0,
                     top: 0,
                     child: Icon(Icons.star_rounded, size: 14, color: NxPalette.warn),
+                  ),
+                if (f.isLocked)
+                  Positioned(
+                    left: 0,
+                    bottom: 0,
+                    child: _LockBadge(lock: f.lock!),
                   ),
               ]),
             ),

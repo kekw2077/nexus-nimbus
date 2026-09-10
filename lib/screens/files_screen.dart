@@ -22,6 +22,7 @@ import '../ui/widgets/menu.dart';
 import '../ui/widgets/search_dialog.dart';
 import '../ui/widgets/share_dialog.dart';
 import '../ui/widgets/versions_dialog.dart';
+import '../ui/widgets/workspace_panel.dart';
 
 class FilesScreen extends StatefulWidget {
   const FilesScreen({
@@ -240,6 +241,22 @@ class _FilesScreenState extends State<FilesScreen> {
           MenuAction('В избранное', Icons.star_rounded,
               () => _guard(() => s.setFavorite(files, true))),
       ],
+      if (s.account.provider.hasLocks) ...[
+        menuSeparator,
+        // Занятый файл сервер не даёт переписать никому, кроме того, кто
+        // его занял. Чужую блокировку снять нельзя — пункт остаётся
+        // видимым, но выключенным, иначе непонятно, почему его нет.
+        if (files.every((f) => f.isLocked && f.lock!.byMe(s.account.loginName)))
+          MenuAction('Отпустить', Icons.lock_open_rounded,
+              () => _guard(() => s.setLocked(files, false)))
+        else
+          MenuAction(
+            'Занять за собой',
+            Icons.lock_rounded,
+            () => _guard(() => s.setLocked(files, true)),
+            enabled: files.every((f) => !f.isLocked),
+          ),
+      ],
       menuSeparator,
       if (single)
         MenuAction('Переименовать', Icons.drive_file_rename_outline_rounded,
@@ -436,7 +453,24 @@ class _FilesScreenState extends State<FilesScreen> {
 
   static String _baseName(String path) => path.split('/').last;
 
+  /// Описание папки идёт над всем остальным — и над списком, и над
+  /// заглушкой пустой папки: у папки с одним лишь README описание есть,
+  /// а показывать нечего, и без панели она выглядела бы просто пустой.
   Widget _body(NxPalette p) {
+    final workspace = s.workspace;
+    final content = _content(p);
+    if (workspace == null) return content;
+
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: WorkspacePanel(markdown: workspace),
+      ),
+      Expanded(child: content),
+    ]);
+  }
+
+  Widget _content(NxPalette p) {
     if (s.loading && s.visible.isEmpty) {
       return Center(
         child: SizedBox(
@@ -825,6 +859,23 @@ class _TransferStripState extends State<_TransferStrip> {
         ? '${formatBytes(q.doneBytes)} из ${formatBytes(total)}'
         : 'считаем объём…';
 
+    // Когда идёт одна пачка и больше ничего — называем её по имени.
+    // «Передаётся 3 файла» про заливку папки на пятьдесят тысяч файлов
+    // говорит неправду: три — это те, что влезли в три потока.
+    final batches = q.activeBatches.toList();
+    final single = batches.length == 1 && q.filesTotal == batches.first.files;
+    final headline = single
+        ? '${batches.first.kind == TransferKind.download ? 'Скачивается' : 'Загружается'} '
+            '«${batches.first.label}»'
+        : 'Передаётся ${formatCount(q.activeCount)} '
+            '${plural(q.activeCount, 'файл', 'файла', 'файлов')}';
+
+    // Счёт файлов важнее процентов: он не врёт, пока идёт обход дерева,
+    // и по нему видно, далеко ли до конца, даже когда файлы разного веса.
+    final files = q.filesTotal > 0
+        ? '${formatCount(q.filesDone)} из ${formatCount(q.filesTotal)}'
+        : '';
+
     final right = <String>[];
     final speed = q.bytesPerSecond;
     if (speed > 0) right.add(formatSpeed(speed));
@@ -850,11 +901,18 @@ class _TransferStripState extends State<_TransferStrip> {
             Row(children: [
               Icon(Icons.swap_vert_rounded, size: 15, color: t.accent.a1),
               const SizedBox(width: 10),
-              Text(
-                'Передаётся ${q.activeCount} '
-                '${plural(q.activeCount, 'файл', 'файла', 'файлов')}',
-                style: NxType.label.copyWith(color: p.txt, fontSize: 12),
+              Flexible(
+                child: Text(
+                  headline,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: NxType.label.copyWith(color: p.txt, fontSize: 12),
+                ),
               ),
+              if (files.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                Text(files, style: NxType.numeric.copyWith(color: p.sub, fontSize: 11)),
+              ],
               const SizedBox(width: 10),
               Text(size, style: NxType.numeric.copyWith(color: p.sub, fontSize: 11)),
               const Spacer(),
@@ -862,8 +920,10 @@ class _TransferStripState extends State<_TransferStrip> {
                 Text(right.join(' · '),
                     style: NxType.numeric.copyWith(color: p.faint, fontSize: 11)),
               const SizedBox(width: 12),
-              Text('${(q.overallFraction * 100).round()}%',
-                  style: NxType.numeric.copyWith(color: t.accent.a1, fontSize: 11)),
+              Text(
+                q.scanning ? 'считаем…' : '${(q.overallFraction * 100).round()}%',
+                style: NxType.numeric.copyWith(color: t.accent.a1, fontSize: 11),
+              ),
               const SizedBox(width: 10),
               Tooltip(
                 message: 'Отменить всё',
@@ -877,7 +937,9 @@ class _TransferStripState extends State<_TransferStrip> {
               ),
             ]),
             const SizedBox(height: 8),
-            NxProgressLine(fraction: q.overallFraction, height: 3),
+            // Пока дерево обходится, полоса стоит на нуле, а не ползёт
+            // назад с каждой найденной тысячей файлов.
+            NxProgressLine(fraction: q.scanning ? 0 : q.overallFraction, height: 3),
           ]),
         ),
       ),

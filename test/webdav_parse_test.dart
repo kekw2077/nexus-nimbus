@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:nexus_nimbus/core/format.dart';
 import 'package:nexus_nimbus/core/models/cloud_provider.dart';
+import 'package:nexus_nimbus/core/models/remote_file.dart';
 import 'package:nexus_nimbus/services/sync_engine.dart';
 import 'package:nexus_nimbus/services/updater.dart';
 import 'package:nexus_nimbus/services/transfer_queue.dart';
@@ -48,6 +49,75 @@ const _multistatus = '''<?xml version="1.0"?>
     </d:propstat>
     <d:propstat>
       <d:prop><oc:size/></d:prop>
+      <d:status>HTTP/1.1 404 Not Found</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>''';
+
+/// Ответ с расширенными свойствами: то, что Nextcloud отдаёт сверх
+/// обычного PROPFIND — виды раздачи, счётчики содержимого, контрольные
+/// суммы, даты создания и заливки, блокировка.
+const _extended = '''<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.org/ns">
+  <d:response>
+    <d:href>/remote.php/dav/files/art/Проекты/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+        <oc:fileid>77</oc:fileid>
+        <oc:size>8192</oc:size>
+        <oc:permissions>RGDNVCK</oc:permissions>
+        <oc:share-types>
+          <oc:share-type>3</oc:share-type>
+          <oc:share-type>0</oc:share-type>
+          <oc:share-type>3</oc:share-type>
+        </oc:share-types>
+        <nc:contained-folder-count>2</nc:contained-folder-count>
+        <nc:contained-file-count>7</nc:contained-file-count>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/remote.php/dav/files/art/Проекты/смета.xlsx</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getcontentlength>51200</d:getcontentlength>
+        <d:resourcetype/>
+        <oc:fileid>78</oc:fileid>
+        <oc:permissions>RGDNVW</oc:permissions>
+        <oc:checksums>
+          <oc:checksum>SHA1:0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33</oc:checksum>
+          <oc:checksum>MD5:900150983cd24fb0d6963f7d28e17f72</oc:checksum>
+        </oc:checksums>
+        <nc:creation_time>1756000000</nc:creation_time>
+        <nc:upload_time>1757000000</nc:upload_time>
+        <nc:lock>1</nc:lock>
+        <nc:lock-owner>art</nc:lock-owner>
+        <nc:lock-owner-displayname>Артём</nc:lock-owner-displayname>
+        <nc:lock-owner-type>0</nc:lock-owner-type>
+        <nc:lock-time>1757000000</nc:lock-time>
+        <nc:lock-timeout>1800</nc:lock-timeout>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/remote.php/dav/files/art/Проекты/черновик.txt</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getcontentlength>120</d:getcontentlength>
+        <d:resourcetype/>
+        <oc:fileid>79</oc:fileid>
+        <oc:permissions>RGDNVW</oc:permissions>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+    <d:propstat>
+      <d:prop>
+        <oc:checksums/><nc:lock/><nc:creation_time/>
+        <nc:contained-file-count/>
+      </d:prop>
       <d:status>HTTP/1.1 404 Not Found</d:status>
     </d:propstat>
   </d:response>
@@ -145,7 +215,97 @@ void main() {
     });
   });
 
+  group('разбор расширенных свойств', () {
+    final parsed = WebDavClient.parseMultistatus(
+      Uint8List.fromList(utf8.encode(_extended)),
+      4,
+    );
+    final folder = parsed[0];
+    final locked = parsed[1];
+    final plain = parsed[2];
+
+    test('виды раздачи разбираются и не двоятся', () {
+      // В ответе share-type 3 встречается дважды — способ один и тот же.
+      expect(folder.shareTypes, containsAll([ShareKind.link, ShareKind.user]));
+      expect(folder.shareTypes, hasLength(2));
+      expect(folder.isSharedOut, isTrue);
+    });
+
+    test('счётчики содержимого читаются у папки', () {
+      expect(folder.folderCount, 2);
+      expect(folder.fileCount, 7);
+      expect(folder.hasCounts, isTrue);
+    });
+
+    test('суммы из отдельных элементов не склеиваются', () {
+      expect(locked.checksums.sha1, '0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33');
+      expect(locked.checksums.md5, '900150983cd24fb0d6963f7d28e17f72');
+      expect(locked.checksums.preferred?.type, 'SHA1');
+    });
+
+    test('даты создания и заливки — это разные даты', () {
+      expect(locked.created?.toUtc(), DateTime.fromMillisecondsSinceEpoch(1756000000 * 1000, isUtc: true));
+      expect(locked.uploaded?.toUtc(), DateTime.fromMillisecondsSinceEpoch(1757000000 * 1000, isUtc: true));
+      expect(locked.created, isNot(locked.uploaded));
+    });
+
+    test('блокировка разбирается вместе с владельцем и сроком', () {
+      final lock = locked.lock;
+      expect(lock, isNotNull);
+      expect(lock!.who, 'Артём');
+      expect(lock.owner, 'art');
+      expect(lock.byApp, isFalse);
+      expect(lock.timeout, const Duration(minutes: 30));
+      expect(lock.expiresAt, lock.since!.add(const Duration(minutes: 30)));
+    });
+
+    test('своя блокировка отличается от чужой, регистр не мешает', () {
+      final lock = locked.lock!;
+      expect(lock.byMe('ART'), isTrue);
+      expect(lock.byMe('kate'), isFalse);
+      expect(lock.byMe(null), isFalse);
+    });
+
+    test('без свойств запись остаётся пустой, а не выдуманной', () {
+      // Свойства пришли в блоке 404 — значит, сервер их не знает.
+      expect(plain.checksums.isEmpty, isTrue);
+      expect(plain.lock, isNull);
+      expect(plain.isLocked, isFalse);
+      expect(plain.created, isNull);
+      expect(plain.folderCount, isNull);
+      expect(plain.hasCounts, isFalse);
+      expect(plain.shareTypes, isEmpty);
+    });
+  });
+
+  group('контрольные суммы', () {
+    test('разбирают строку с несколькими алгоритмами', () {
+      final c = Checksums.parse('SHA1:AABBCC MD5:DDEEFF');
+      expect(c.sha1, 'aabbcc');
+      expect(c.md5, 'ddeeff');
+    });
+
+    test('пустое и мусорное не роняют разбор', () {
+      expect(Checksums.parse(null).isEmpty, isTrue);
+      expect(Checksums.parse('   ').isEmpty, isTrue);
+      expect(Checksums.parse('SHA1:').isEmpty, isTrue);
+      expect(Checksums.parse(':abc').isEmpty, isTrue);
+    });
+
+    test('без SHA1 сверяемся по MD5', () {
+      expect(Checksums.parse('MD5:abc').preferred?.type, 'MD5');
+      expect(Checksums.parse('ADLER32:abc').preferred, isNull);
+    });
+  });
+
   group('форматирование', () {
+    test('разряды в больших числах разделяются', () {
+      expect(formatCount(7), '7');
+      expect(formatCount(999), '999');
+      expect(formatCount(50214), '50\u00A0214');
+      expect(formatCount(1234567), '1\u00A0234\u00A0567');
+    });
+
     test('размеры считаются по 1024', () {
       expect(formatBytes(0), '0 Б');
       expect(formatBytes(512), '512 Б');
@@ -178,6 +338,117 @@ void main() {
     test('длительность: меньше секунды показывается как секунда', () {
       expect(formatDuration(Duration.zero), '1 с');
       expect(formatDuration(const Duration(milliseconds: 200)), '1 с');
+    });
+  });
+
+  group('пачка передач', () {
+    TransferBatch makeBatch() => TransferBatch(
+          id: 1,
+          kind: TransferKind.upload,
+          label: 'Nexus Anima',
+          remoteRoot: 'проекты/Nexus Anima',
+        );
+
+    TransferTask makeFile(TransferBatch batch, int id, int size) => TransferTask(
+          id: id,
+          kind: TransferKind.upload,
+          remotePath: 'проекты/Nexus Anima/файл$id.dart',
+          local: File('файл$id.dart'),
+          batch: batch,
+          total: size,
+        );
+
+    test('пока идёт обход, пачка жива даже без задач', () {
+      // Иначе только что открытая пачка считалась бы законченной и
+      // исчезала бы из списка, не начавшись.
+      final batch = makeBatch();
+      expect(batch.files, 0);
+      expect(batch.isActive, isTrue);
+      expect(batch.scanning, isTrue);
+
+      batch.scanning = false;
+      expect(batch.isActive, isFalse);
+    });
+
+    test('счёт файлов и байтов растёт по мере обхода', () {
+      final batch = makeBatch();
+      batch.noteAdded(makeFile(batch, 1, 100));
+      batch.noteAdded(makeFile(batch, 2, 300));
+
+      expect(batch.files, 2);
+      expect(batch.bytesTotal, 400);
+      expect(batch.filesLeft, 2);
+      expect(batch.startedAt, isNotNull);
+    });
+
+    test('завершённой задаче засчитывается весь размер', () {
+      // Последний отрезок прогресса может не прийти, а файл при этом
+      // уехал целиком — иначе пачка навсегда застревала бы на 99%.
+      final batch = makeBatch()..scanning = false;
+      final task = makeFile(batch, 1, 1000)..done = 940;
+      batch.noteAdded(task);
+      batch.noteSettled(task, TransferState.done);
+
+      expect(batch.bytesDone, 1000);
+      expect(batch.fraction, 1.0);
+      expect(batch.filesDone, 1);
+      expect(batch.isActive, isFalse);
+      expect(batch.state, TransferState.done);
+    });
+
+    test('идущие задачи считаются отдельно от закрытых', () {
+      final batch = makeBatch()..scanning = false;
+      final first = makeFile(batch, 1, 1000);
+      final second = makeFile(batch, 2, 1000)..done = 250;
+      batch..noteAdded(first)..noteAdded(second);
+      batch.noteSettled(first, TransferState.done);
+      batch.noteRunning(second);
+
+      expect(batch.bytesDone, 1250);
+      expect(batch.fraction, closeTo(0.625, 0.001));
+      expect(batch.filesLeft, 1);
+      expect(batch.state, TransferState.running);
+    });
+
+    test('пока идёт обход, срок не обещается', () {
+      // Знаменатель ещё растёт: обещанные пять минут превратились бы
+      // в час, и лучше промолчать.
+      final batch = makeBatch();
+      batch.noteAdded(makeFile(batch, 1, 1000));
+      expect(batch.remaining, isNull);
+    });
+
+    test('неудачи копятся, но список не растёт без предела', () {
+      final batch = makeBatch()..scanning = false;
+      for (var i = 0; i < TransferBatch.maxFailures + 20; i++) {
+        final task = makeFile(batch, i, 10);
+        batch.noteAdded(task);
+        batch.noteSettled(task, TransferState.failed);
+      }
+
+      expect(batch.filesFailed, TransferBatch.maxFailures + 20);
+      expect(batch.failures, hasLength(TransferBatch.maxFailures));
+      expect(batch.state, TransferState.failed);
+    });
+
+    test('отменённая пачка остаётся отменённой, даже если часть уехала', () {
+      final batch = makeBatch()..scanning = false;
+      final ok = makeFile(batch, 1, 100);
+      final stopped = makeFile(batch, 2, 100);
+      batch..noteAdded(ok)..noteAdded(stopped);
+      batch.noteSettled(ok, TransferState.done);
+      batch.noteSettled(stopped, TransferState.cancelled);
+      batch.cancelled = true;
+
+      expect(batch.filesDone, 1);
+      expect(batch.state, TransferState.cancelled);
+      expect(batch.isActive, isFalse);
+    });
+
+    test('россыпь файлов — пачка без папки', () {
+      final batch = TransferBatch(id: 2, kind: TransferKind.download, label: '12 файлов');
+      expect(batch.isFolder, isFalse);
+      expect(batch.remoteRoot, isNull);
     });
   });
 
@@ -544,6 +815,19 @@ void main() {
       final back = NxAccount.fromJson(make(provider: CloudProvider.yandex).toJson());
       expect(back.provider, CloudProvider.yandex);
       expect(back.id, make(provider: CloudProvider.yandex).id);
+    });
+  });
+
+  group('содержимое папки словами', () {
+    test('склоняет и папки, и файлы', () {
+      expect(formatContents(folders: 1, files: 1), '1 папка, 1 файл');
+      expect(formatContents(folders: 2, files: 7), '2 папки, 7 файлов');
+      expect(formatContents(folders: 0, files: 3), '3 файла');
+    });
+
+    test('пусто и «сервер не сказал» — разные вещи', () {
+      expect(formatContents(folders: 0, files: 0), 'пусто');
+      expect(formatContents(), isNull);
     });
   });
 

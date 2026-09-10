@@ -25,6 +25,32 @@ String plural(int n, String one, String few, String many) {
 
 String formatSpeed(int bytesPerSecond) => '${formatBytes(bytesPerSecond)}/с';
 
+/// Число с разрядами: 50 214 читается с одного взгляда, 50214 — нет.
+/// Разделитель неразрывный, чтобы число не переносилось посередине.
+String formatCount(int n) {
+  final digits = n.abs().toString();
+  final out = StringBuffer(n < 0 ? '-' : '');
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write(' ');
+    out.write(digits[i]);
+  }
+  return out.toString();
+}
+
+/// Сколько лежит внутри папки, словами. Считает это сервер
+/// (nc:contained-folder-count и nc:contained-file-count) — но не всякий:
+/// null означает «сервер не сказал», и это не то же самое, что «пусто».
+String? formatContents({int? folders, int? files}) {
+  if (folders == null && files == null) return null;
+  final d = folders ?? 0;
+  final f = files ?? 0;
+  final parts = <String>[
+    if (d > 0) '$d ${plural(d, 'папка', 'папки', 'папок')}',
+    if (f > 0) '$f ${plural(f, 'файл', 'файла', 'файлов')}',
+  ];
+  return parts.isEmpty ? 'пусто' : parts.join(', ');
+}
+
 /// Длительность коротко, для оценки «сколько осталось». Секунды у минут
 /// показываем, только пока минут меньше десяти: дальше эта точность всё
 /// равно ложная — скорость плавает сильнее, чем эти секунды значат.

@@ -100,6 +100,20 @@ enum CloudProvider {
   /// подходящей точки нет, и остаётся фильтр по открытой папке.
   bool get hasSearch => this == CloudProvider.nextcloud;
 
+  /// Описание папки из README.md — расширение Nextcloud (приложение Text).
+  /// Даже там его может не быть: приложение отключается, и тогда свойство
+  /// просто не приходит.
+  bool get hasWorkspace => this == CloudProvider.nextcloud;
+
+  /// Блокировка файла на сервере — приложение files_lock, Nextcloud 24
+  /// и новее. Как и с рабочей областью, наличие проверяется по ответу:
+  /// сервер без него на LOCK отвечает отказом.
+  bool get hasLocks => this == CloudProvider.nextcloud;
+
+  /// Контрольные суммы в свойствах файла: сервер считает их при заливке,
+  /// а клиент сверяет скачанное.
+  bool get hasChecksums => this == CloudProvider.nextcloud;
+
   static CloudProvider byName(String? name) {
     for (final v in CloudProvider.values) {
       if (v.name == name) return v;

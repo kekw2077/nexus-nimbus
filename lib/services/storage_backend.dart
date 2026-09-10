@@ -74,6 +74,16 @@ abstract class StorageBackend {
 
   Future<List<RemoteFile>> favorites() => _no('Избранное');
 
+  /// Описание папки — README.md, показанный её шапкой. Не ошибка, а «нечем
+  /// описать»: облака без этой затеи молча отвечают null, и вызывающему
+  /// не приходится ловить исключение на каждой папке.
+  Future<String?> workspace(String path) async => null;
+
+  /// Занять файл за собой, чтобы никто другой его не переписал.
+  Future<void> lockFile(String path) => _no('Блокировка файлов');
+
+  Future<void> unlockFile(String path) => _no('Блокировка файлов');
+
   Future<void> setFavorite(String path, bool favorite) => _no('Избранное');
 
   Future<List<RemoteFile>> search(String query, {int limit = 100}) =>

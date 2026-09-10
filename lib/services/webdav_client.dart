@@ -233,8 +233,21 @@ class WebDavClient extends StorageBackend {
       '<d:getlastmodified/><d:getcontentlength/><d:getcontenttype/>'
       '<d:getetag/><d:resourcetype/>'
       '<oc:fileid/><oc:size/><oc:permissions/><oc:favorite/>'
-      '<nc:has-preview/>'
+      '<oc:share-types/><oc:checksums/>'
+      '<nc:has-preview/><nc:creation_time/><nc:upload_time/>'
+      '<nc:contained-folder-count/><nc:contained-file-count/>'
+      '<nc:lock/><nc:lock-owner/><nc:lock-owner-displayname/>'
+      '<nc:lock-owner-type/><nc:lock-time/><nc:lock-timeout/>'
       '</d:prop>';
+
+  /// Описание папки (README.md, показанный её шапкой) спрашивается
+  /// отдельно и только про открытую папку. В общий список свойств его
+  /// класть нельзя: на Depth 1 сервер полез бы читать README у каждой
+  /// вложенной папки, и обычный переход по дереву стал бы дороже.
+  static const _workspaceBody = '<?xml version="1.0" encoding="UTF-8"?>'
+      '<d:propfind $_ns><d:prop>'
+      '<nc:rich-workspace/><nc:rich-workspace-file/>'
+      '</d:prop></d:propfind>';
 
   static const _ns = 'xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" '
       'xmlns:nc="http://nextcloud.org/ns"';
@@ -275,6 +288,56 @@ class WebDavClient extends StorageBackend {
     final all = _parseMultistatus(res.bodyBytes);
     if (all.isEmpty) throw NextcloudException('Сервер не вернул свойства «$path»');
     return all.first;
+  }
+
+  /// Описание папки: содержимое её README.md, которое веб-интерфейс
+  /// показывает шапкой над списком. Свойство даёт приложение Text; если
+  /// его на сервере нет, свойство просто не приходит — это не ошибка,
+  /// и спрашивать больше нечего.
+  @override
+  Future<String?> workspace(String path) async {
+    if (!account.provider.hasWorkspace) return null;
+    final uri = fileUri(path);
+    final res = await _send('PROPFIND', uri,
+        headers: {'Depth': '0', 'Content-Type': 'application/xml; charset=utf-8'},
+        body: utf8.encode(_workspaceBody));
+    if (res.statusCode != 207) return null;
+
+    final doc = XmlDocument.parse(utf8.decode(res.bodyBytes));
+    for (final ps in doc.findAllElements('propstat', namespaceUri: '*')) {
+      final status = ps.findElements('status', namespaceUri: '*').firstOrNull?.innerText ?? '';
+      if (!status.contains('200')) continue;
+      final prop = ps.findElements('prop', namespaceUri: '*').firstOrNull;
+      final text = prop?.findElements('rich-workspace', namespaceUri: '*').firstOrNull?.innerText;
+      if (text != null && text.trim().isNotEmpty) return text;
+    }
+    return null;
+  }
+
+  /// Занять файл за собой. Заголовок `X-User-Lock` отличает блокировку
+  /// приложения files_lock от обычной WebDAV-блокировки: та живёт маркером
+  /// в памяти клиента, а эта видна всем и переживает перезапуск.
+  @override
+  Future<void> lockFile(String path) async {
+    _require(account.provider.hasLocks, 'Блокировка файлов');
+    final uri = fileUri(path);
+    final res = await _send('LOCK', uri, headers: {'X-User-Lock': '1'});
+    if (res.statusCode == 412 || res.statusCode == 423) {
+      throw NextcloudException('Файл уже занят кем-то другим', uri: uri);
+    }
+    if (res.statusCode >= 400) throw NextcloudException.fromStatus(res.statusCode, uri);
+  }
+
+  /// Отпустить файл. Чужую блокировку сервер снять не даст — ответит 412.
+  @override
+  Future<void> unlockFile(String path) async {
+    _require(account.provider.hasLocks, 'Блокировка файлов');
+    final uri = fileUri(path);
+    final res = await _send('UNLOCK', uri, headers: {'X-User-Lock': '1'});
+    if (res.statusCode == 412 || res.statusCode == 423) {
+      throw NextcloudException('Эту блокировку ставили не вы — снять её нельзя', uri: uri);
+    }
+    if (res.statusCode >= 400) throw NextcloudException.fromStatus(res.statusCode, uri);
   }
 
   @override
@@ -1058,6 +1121,41 @@ class WebDavClient extends StorageBackend {
       final rt = prop.findElements('resourcetype', namespaceUri: '*').firstOrNull;
       final isDir = rt?.findElements('collection', namespaceUri: '*').isNotEmpty ?? false;
 
+      // Виды раздачи приходят вложенным списком: <oc:share-types> с
+      // <oc:share-type> внутри. Одним и тем же способом можно поделиться
+      // дважды — нам нужен набор, а не счёт.
+      final shares = <ShareKind>{};
+      final st = prop.findElements('share-types', namespaceUri: '*').firstOrNull;
+      if (st != null) {
+        for (final e in st.findElements('share-type', namespaceUri: '*')) {
+          final code = int.tryParse(e.innerText.trim());
+          if (code != null) shares.add(ShareKind.byCode(code));
+        }
+      }
+
+      // Суммы сервер отдаёт то одной строкой, то несколькими элементами
+      // <oc:checksum> — берём и так, и так, иначе склеятся без пробела.
+      final ck = prop.findElements('checksums', namespaceUri: '*').firstOrNull;
+      final parts = ck?.findElements('checksum', namespaceUri: '*').toList() ?? const [];
+      final ckText = ck == null
+          ? null
+          : parts.isEmpty
+              ? ck.innerText
+              : parts.map((e) => e.innerText.trim()).join(' ');
+
+      // Блокировка: без <nc:lock>1</nc:lock> остальные поля бессмысленны.
+      FileLock? lock;
+      if (text('lock') == '1') {
+        final timeout = int.tryParse(text('lock-timeout') ?? '');
+        lock = FileLock(
+          owner: text('lock-owner') ?? text('lock-owner-displayname') ?? '',
+          ownerDisplayName: text('lock-owner-displayname'),
+          ownerType: int.tryParse(text('lock-owner-type') ?? '') ?? 0,
+          since: _unixTime(text('lock-time')),
+          timeout: (timeout == null || timeout <= 0) ? null : Duration(seconds: timeout),
+        );
+      }
+
       out.add(RemoteFile(
         path: path,
         isDir: isDir,
@@ -1071,9 +1169,24 @@ class WebDavClient extends StorageBackend {
         hasPreview: text('has-preview') == 'true',
         favorite: text('favorite') == '1',
         permissions: text('permissions') ?? '',
+        shareTypes: shares.toList(),
+        created: _unixTime(text('creation_time')),
+        uploaded: _unixTime(text('upload_time')),
+        checksums: Checksums.parse(ckText),
+        folderCount: int.tryParse(text('contained-folder-count') ?? ''),
+        fileCount: int.tryParse(text('contained-file-count') ?? ''),
+        lock: lock,
       ));
     }
     return out;
+  }
+
+  /// Секунды от начала эпохи по Гринвичу — так Nextcloud отдаёт даты
+  /// создания, заливки и блокировки. Ноль означает «неизвестно».
+  static DateTime? _unixTime(String? raw) {
+    final seconds = int.tryParse(raw ?? '');
+    if (seconds == null || seconds <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true).toLocal();
   }
 
   static DateTime? _parseDate(String? raw) {

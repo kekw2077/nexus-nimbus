@@ -14,6 +14,7 @@ import '../services/thumbnail_cache.dart';
 import '../services/transfer_queue.dart';
 import '../services/vault.dart';
 import '../services/webdav_client.dart';
+import 'format.dart';
 import 'models/remote_file.dart';
 
 enum ViewMode { list, grid }
@@ -195,11 +196,18 @@ class Session extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    final path = _path;
     _loading = true;
     _error = null;
+    _workspace = null;
     notifyListeners();
+
+    // Описание папки — отдельный запрос, и уходит он вместе со списком,
+    // а не после: иначе пауза перед первой отрисовкой удвоилась бы.
+    unawaited(_refreshWorkspace(path));
+
     try {
-      final list = await dav.list(_path);
+      final list = await dav.list(path);
       _entries = list;
       _error = null;
       // Сверка с диском идёт следом и не задерживает отрисовку списка.
@@ -212,6 +220,45 @@ class Session extends ChangeNotifier {
       notifyListeners();
     }
     unawaited(refreshQuota());
+  }
+
+  // -------------------------------------------------------- описание папки
+
+  String? _workspace;
+
+  /// README.md открытой папки, который сервер показывает её шапкой.
+  /// null — описания нет, приложение Text выключено или облако не то.
+  String? get workspace => _workspace;
+
+  Future<void> _refreshWorkspace(String path) async {
+    String? text;
+    try {
+      text = await dav.workspace(path);
+    } catch (_) {
+      // Описание — украшение. Папка открывается и без него.
+      text = null;
+    }
+    // Пока ответ ехал, человек мог уйти в другую папку: тогда это
+    // описание относится не к тому, что сейчас на экране.
+    if (path != _path) return;
+    _workspace = text;
+    notifyListeners();
+  }
+
+  // ------------------------------------------------------------ блокировки
+
+  /// Занять файлы за собой на сервере или отпустить их. Блокировка живёт
+  /// в свойствах записи, поэтому папку перечитываем — иначе значок в
+  /// списке остался бы прежним.
+  Future<void> setLocked(Iterable<RemoteFile> files, bool locked) async {
+    for (final f in files) {
+      if (locked) {
+        await dav.lockFile(f.path);
+      } else {
+        await dav.unlockFile(f.path);
+      }
+    }
+    await refresh();
   }
 
   // ----------------------------------------------------------- избранное
@@ -373,20 +420,61 @@ class Session extends ChangeNotifier {
   // ----------------------------------------------------------- передачи
 
   /// Кладёт локальные файлы в текущую папку. Папки раскрываются рекурсивно.
+  ///
+  /// Каждая папка верхнего уровня становится **пачкой**: в списке передач
+  /// видна она одна, а не всё, что внутри. Отдельно выбранные файлы, если
+  /// их несколько, тоже собираются в пачку. Иначе выходит то, ради чего
+  /// это и переделано: залил один проект — получил пятьдесят тысяч строк,
+  /// среди которых уже ничего не найти.
   Future<void> uploadPaths(Iterable<String> localPaths, {String? into}) async {
     final target = into ?? _path;
+
+    final dirs = <String>[];
+    final files = <String>[];
     for (final raw in localPaths) {
-      final type = FileSystemEntity.typeSync(raw);
-      if (type == FileSystemEntityType.directory) {
-        await _uploadDirectory(Directory(raw), _join(target, p.basename(raw)));
-      } else if (type == FileSystemEntityType.file) {
-        transfers.enqueueUpload(File(raw), _join(target, p.basename(raw)));
+      switch (FileSystemEntity.typeSync(raw)) {
+        case FileSystemEntityType.directory:
+          dirs.add(raw);
+        case FileSystemEntityType.file:
+          files.add(raw);
+        default:
+          break;
+      }
+    }
+
+    if (files.length == 1) {
+      // Один файл — сам себе строка, пачка ему только мешала бы.
+      transfers.enqueueUpload(File(files.first), _join(target, p.basename(files.first)));
+    } else if (files.length > 1) {
+      final batch = transfers.beginBatch(
+        kind: TransferKind.upload,
+        label: '${files.length} ${plural(files.length, 'файл', 'файла', 'файлов')}',
+      );
+      for (final raw in files) {
+        transfers.enqueueUpload(File(raw), _join(target, p.basename(raw)), batch: batch);
+      }
+      transfers.endBatch(batch);
+    }
+
+    for (final raw in dirs) {
+      final remoteDir = _join(target, p.basename(raw));
+      final batch = transfers.beginBatch(
+        kind: TransferKind.upload,
+        label: p.basename(raw),
+        remoteRoot: remoteDir,
+      );
+      try {
+        await _uploadDirectory(Directory(raw), remoteDir, batch);
+      } finally {
+        // Даже если обход сорвался на середине, пачка должна перестать
+        // считать себя неполной — иначе она навсегда останется «идущей».
+        transfers.endBatch(batch);
       }
     }
     notifyListeners();
   }
 
-  Future<void> _uploadDirectory(Directory dir, String remoteDir) async {
+  Future<void> _uploadDirectory(Directory dir, String remoteDir, TransferBatch batch) async {
     try {
       await dav.mkdir(remoteDir);
     } on NextcloudException catch (e) {
@@ -396,27 +484,60 @@ class Session extends ChangeNotifier {
     await for (final entity in dir.list(followLinks: false)) {
       final name = p.basename(entity.path);
       if (entity is Directory) {
-        await _uploadDirectory(entity, _join(remoteDir, name));
+        await _uploadDirectory(entity, _join(remoteDir, name), batch);
       } else if (entity is File) {
-        transfers.enqueueUpload(entity, _join(remoteDir, name));
+        transfers.enqueueUpload(entity, _join(remoteDir, name), batch: batch);
       }
     }
   }
 
-  /// Скачивание в локальное зеркало. Папки обходятся рекурсивно.
+  /// Скачивание в локальное зеркало. Папка — одна пачка на всё дерево,
+  /// как и при заливке.
   Future<void> download(Iterable<RemoteFile> files, {bool pin = false}) async {
-    for (final f in files) {
-      if (f.isDir) {
-        final children = await dav.list(f.path);
-        await download(children, pin: pin);
-      } else {
-        final task = transfers.enqueueDownload(f);
-        if (pin) {
-          unawaited(_pinWhenDone(task, f.path));
-        }
+    final all = files.toList();
+    final loose = all.where((f) => !f.isDir).toList();
+
+    if (loose.length == 1) {
+      _enqueueDownload(loose.first, pin: pin);
+    } else if (loose.length > 1) {
+      final batch = transfers.beginBatch(
+        kind: TransferKind.download,
+        label: '${loose.length} ${plural(loose.length, 'файл', 'файла', 'файлов')}',
+      );
+      for (final f in loose) {
+        _enqueueDownload(f, pin: pin, batch: batch);
+      }
+      transfers.endBatch(batch);
+    }
+
+    for (final dir in all.where((f) => f.isDir)) {
+      final batch = transfers.beginBatch(
+        kind: TransferKind.download,
+        label: dir.name,
+        remoteRoot: dir.path,
+      );
+      try {
+        await _downloadTree(dir, batch, pin);
+      } finally {
+        transfers.endBatch(batch);
       }
     }
     notifyListeners();
+  }
+
+  Future<void> _downloadTree(RemoteFile dir, TransferBatch batch, bool pin) async {
+    for (final child in await dav.list(dir.path)) {
+      if (child.isDir) {
+        await _downloadTree(child, batch, pin);
+      } else {
+        _enqueueDownload(child, pin: pin, batch: batch);
+      }
+    }
+  }
+
+  void _enqueueDownload(RemoteFile file, {required bool pin, TransferBatch? batch}) {
+    final task = transfers.enqueueDownload(file, batch: batch);
+    if (pin) unawaited(_pinWhenDone(task, file.path));
   }
 
   Future<void> _pinWhenDone(TransferTask task, String path) async {
