@@ -48,6 +48,7 @@ class Session extends ChangeNotifier {
     bool syncEnabled = true,
     bool syncEverything = false,
     Duration syncInterval = const Duration(minutes: 5),
+    bool showWorkspace = true,
   }) async {
     final vault = await Vault.open(
       accountSlug: account.slug,
@@ -71,6 +72,7 @@ class Session extends ChangeNotifier {
         interval: syncInterval,
       ),
     );
+    session._showWorkspace = showWorkspace;
     vault.addListener(session.notifyListeners);
     session.transfers.addListener(session._onTransfers);
     session.edits.addListener(session.notifyListeners);
@@ -225,10 +227,21 @@ class Session extends ChangeNotifier {
   // -------------------------------------------------------- описание папки
 
   String? _workspace;
+  bool _showWorkspace = true;
 
   /// README.md открытой папки, который сервер показывает её шапкой.
   /// null — описания нет, приложение Text выключено или облако не то.
   String? get workspace => _workspace;
+
+  /// Показывать ли описание вообще. Спрятанное не перестаёт приезжать:
+  /// по нему тулбар знает, что есть что показать обратно.
+  bool get showWorkspace => _showWorkspace;
+
+  void setShowWorkspace(bool value) {
+    if (_showWorkspace == value) return;
+    _showWorkspace = value;
+    notifyListeners();
+  }
 
   Future<void> _refreshWorkspace(String path) async {
     String? text;

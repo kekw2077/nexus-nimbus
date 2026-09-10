@@ -142,6 +142,7 @@ class AppState extends ChangeNotifier {
       syncEnabled: _prefs.readSyncEnabled(),
       syncEverything: _prefs.readSyncEverything(),
       syncInterval: Duration(minutes: _prefs.readSyncInterval()),
+      showWorkspace: _prefs.readShowWorkspace(),
     );
     _session = session;
 

@@ -230,6 +230,7 @@ class _Connected extends StatelessWidget {
             ),
             _ => FilesScreen(
               session: session,
+              prefs: prefs,
               onOpenTransfers: () => onSelect('transfers'),
             ),
           },

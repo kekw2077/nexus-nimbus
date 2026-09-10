@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import '../core/format.dart';
 import '../core/models/remote_file.dart';
 import '../core/session.dart';
+import '../services/prefs.dart';
 import '../services/transfer_queue.dart';
 import '../ui/theme.dart';
 import '../ui/tokens.dart';
@@ -28,10 +29,12 @@ class FilesScreen extends StatefulWidget {
   const FilesScreen({
     super.key,
     required this.session,
+    required this.prefs,
     required this.onOpenTransfers,
   });
 
   final Session session;
+  final Prefs prefs;
 
   /// Уйти в раздел «Передачи» — по полосе под кнопками.
   final VoidCallback onOpenTransfers;
@@ -80,6 +83,13 @@ class _FilesScreenState extends State<FilesScreen> {
   }
 
   // ------------------------------------------------------------- действия
+
+  /// Спрятать или вернуть описание папки. Это настройка, а не состояние
+  /// экрана: спрятанное однажды не должно выскакивать в каждой папке.
+  void _setShowWorkspace(bool value) {
+    s.setShowWorkspace(value);
+    unawaited(widget.prefs.writeShowWorkspace(value));
+  }
 
   Future<void> _guard(Future<void> Function() action) async {
     try {
@@ -363,6 +373,7 @@ class _FilesScreenState extends State<FilesScreen> {
           _Toolbar(
             session: s,
             controller: _searchController,
+            onShowWorkspace: () => _setShowWorkspace(true),
             onNewFolder: _newFolder,
             onUpload: () => _pickAndUpload(),
             onUploadFolder: () => _pickAndUpload(folder: true),
@@ -459,7 +470,7 @@ class _FilesScreenState extends State<FilesScreen> {
   Widget _body(NxPalette p) {
     final workspace = s.workspace;
     final content = _content(p);
-    if (workspace == null) return content;
+    if (workspace == null || !s.showWorkspace) return content;
 
     // Потолок панели — доля окна: развёрнутое описание листается внутри,
     // а список файлов и кнопка «свернуть» остаются на экране.
@@ -468,6 +479,7 @@ class _FilesScreenState extends State<FilesScreen> {
         WorkspacePanel(
           markdown: workspace,
           maxHeight: constraints.maxHeight * 0.55,
+          onHide: () => _setShowWorkspace(false),
         ),
         Expanded(child: content),
       ]),
@@ -645,6 +657,7 @@ class _Toolbar extends StatelessWidget {
     required this.controller,
     required this.onSearchServer,
     required this.onOpenTransfers,
+    required this.onShowWorkspace,
     required this.onNewFolder,
     required this.onUpload,
     required this.onUploadFolder,
@@ -655,6 +668,7 @@ class _Toolbar extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSearchServer;
   final VoidCallback onOpenTransfers;
+  final VoidCallback onShowWorkspace;
   final VoidCallback onNewFolder, onUpload, onUploadFolder, onRefresh;
 
   @override
@@ -699,6 +713,15 @@ class _Toolbar extends StatelessWidget {
                 icon: Icons.travel_explore_rounded,
                 tooltip: 'Искать по всему серверу (Ctrl F)',
                 onTap: onSearchServer),
+          ],
+          // Обратный путь для спрятанного описания. Появляется только
+          // когда описание есть: в папке без README кнопке нечего показать.
+          if (s.workspace != null && !s.showWorkspace) ...[
+            const SizedBox(width: 4),
+            _IconAction(
+                icon: Icons.subject_rounded,
+                tooltip: 'Показать описание папки',
+                onTap: onShowWorkspace),
           ],
           const SizedBox(width: 8),
           _IconAction(

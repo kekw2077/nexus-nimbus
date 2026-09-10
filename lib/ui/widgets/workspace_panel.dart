@@ -16,9 +16,18 @@ import '../tokens.dart';
 /// пришли за файлами. Длинный текст свёрнут до нескольких строк и
 /// растворяется книзу — так видно, что там есть продолжение.
 class WorkspacePanel extends StatefulWidget {
-  const WorkspacePanel({super.key, required this.markdown, required this.maxHeight});
+  const WorkspacePanel({
+    super.key,
+    required this.markdown,
+    required this.maxHeight,
+    this.onHide,
+  });
 
   final String markdown;
+
+  /// Спрятать описание совсем — до тех пор, пока его не вернут из тулбара
+  /// или настроек. Null — кнопки нет.
+  final VoidCallback? onHide;
 
   /// Потолок для развёрнутой панели. Без него длинный README вытолкнул бы
   /// список файлов за край окна вместе с кнопкой «свернуть» — и вернуть
@@ -81,6 +90,14 @@ class _WorkspacePanelState extends State<WorkspacePanel> {
                 expanded: _expanded,
                 onTap: () => setState(() => _expanded = !_expanded),
               ),
+              if (widget.onHide != null) ...[
+                const SizedBox(width: 2),
+                _IconButton(
+                  icon: Icons.close_rounded,
+                  tooltip: 'Скрыть описание',
+                  onTap: widget.onHide!,
+                ),
+              ],
             ]),
           ),
           const SizedBox(height: 10),
@@ -156,17 +173,34 @@ class _Faded extends StatelessWidget {
   }
 }
 
-class _ToggleButton extends StatefulWidget {
+class _ToggleButton extends StatelessWidget {
   const _ToggleButton({required this.expanded, required this.onTap});
 
   final bool expanded;
   final VoidCallback onTap;
 
   @override
-  State<_ToggleButton> createState() => _ToggleButtonState();
+  Widget build(BuildContext context) => _IconButton(
+        icon: expanded ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
+        tooltip: expanded ? 'Свернуть описание' : 'Показать целиком',
+        onTap: onTap,
+      );
 }
 
-class _ToggleButtonState extends State<_ToggleButton> {
+/// Тихая квадратная кнопка в шапке панели: подсвечивается под курсором,
+/// иначе почти не видна — описание важнее кнопок вокруг него.
+class _IconButton extends StatefulWidget {
+  const _IconButton({required this.icon, required this.tooltip, required this.onTap});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  State<_IconButton> createState() => _IconButtonState();
+}
+
+class _IconButtonState extends State<_IconButton> {
   bool _hover = false;
 
   @override
@@ -175,7 +209,7 @@ class _ToggleButtonState extends State<_ToggleButton> {
     final p = t.palette;
 
     return Tooltip(
-      message: widget.expanded ? 'Свернуть описание' : 'Показать целиком',
+      message: widget.tooltip,
       waitDuration: const Duration(milliseconds: 500),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -190,11 +224,7 @@ class _ToggleButtonState extends State<_ToggleButton> {
               color: _hover ? p.hover : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              widget.expanded ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
-              size: 15,
-              color: _hover ? p.body : p.faint,
-            ),
+            child: Icon(widget.icon, size: 15, color: _hover ? p.body : p.faint),
           ),
         ),
       ),

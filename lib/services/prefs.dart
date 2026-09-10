@@ -19,6 +19,7 @@ class Prefs {
   static const _background = 'ui.background';
   static const _anim = 'ui.anim';
   static const _section = 'ui.section';
+  static const _workspace = 'ui.workspace';
   static const _updateChannel = 'update.channel';
   static const _updateServer = 'update.server';
   static const _updateAuto = 'update.auto';
@@ -63,6 +64,11 @@ class Prefs {
   String readSection() => _p.getString(_section) ?? 'files';
 
   Future<void> writeSection(String id) => _p.setString(_section, id);
+
+  /// Показывать ли описание папки (README.md) над списком файлов.
+  bool readShowWorkspace() => _p.getBool(_workspace) ?? true;
+
+  Future<void> writeShowWorkspace(bool value) => _p.setBool(_workspace, value);
 
   // ---------------------------------------------------------- обновления
 

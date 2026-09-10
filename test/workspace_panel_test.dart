@@ -35,7 +35,7 @@ void main() {}
 
 /// Панель в том же окружении, что и в приложении: колонка, где под
 /// панелью лежит список файлов, забирающий остаток высоты.
-Widget _host(String markdown, {double height = 700}) => MaterialApp(
+Widget _host(String markdown, {double height = 700, VoidCallback? onHide}) => MaterialApp(
       home: Scaffold(
         body: SizedBox(
           width: 900,
@@ -45,6 +45,7 @@ Widget _host(String markdown, {double height = 700}) => MaterialApp(
               WorkspacePanel(
                 markdown: markdown,
                 maxHeight: constraints.maxHeight * 0.55,
+                onHide: onHide,
               ),
               const Expanded(child: SizedBox.expand(key: Key('list'))),
             ]),
@@ -101,6 +102,16 @@ void main() {
       expect(tester.takeException(), isNull);
       final panel = tester.getSize(find.byType(WorkspacePanel));
       expect(panel.height, lessThan(120));
+    });
+
+    testWidgets('кнопка «скрыть» есть только когда есть куда скрывать', (tester) async {
+      var hidden = false;
+      await tester.pumpWidget(_host(_readme, onHide: () => hidden = true));
+      await tester.tap(find.byTooltip('Скрыть описание'));
+      expect(hidden, isTrue);
+
+      await tester.pumpWidget(_host(_readme));
+      expect(find.byTooltip('Скрыть описание'), findsNothing);
     });
 
     testWidgets('смена папки сворачивает описание', (tester) async {

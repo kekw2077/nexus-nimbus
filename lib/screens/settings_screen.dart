@@ -242,6 +242,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _traySection(),
           _Section(title: 'Оформление', children: [
             _Row(
+              label: 'Описание папки',
+              hint: 'README.md из папки показывается над списком файлов, '
+                  'как в веб-интерфейсе',
+              child: NxToggle(
+                value: session.showWorkspace,
+                onChanged: (v) async {
+                  setState(() => session.setShowWorkspace(v));
+                  await prefs.writeShowWorkspace(v);
+                },
+              ),
+            ),
+            _Row(
               label: 'Тема',
               child: NxSegmented(
                 options: const ['Тёмная', 'Светлая'],
