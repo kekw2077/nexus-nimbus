@@ -461,13 +461,20 @@ class _FilesScreenState extends State<FilesScreen> {
     final content = _content(p);
     if (workspace == null) return content;
 
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: WorkspacePanel(markdown: workspace),
-      ),
-      Expanded(child: content),
-    ]);
+    // Потолок панели — доля окна: развёрнутое описание листается внутри,
+    // а список файлов и кнопка «свернуть» остаются на экране.
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: WorkspacePanel(
+            markdown: workspace,
+            maxHeight: constraints.maxHeight * 0.55,
+          ),
+        ),
+        Expanded(child: content),
+      ]),
+    );
   }
 
   Widget _content(NxPalette p) {

@@ -14,12 +14,21 @@ import 'glass_panel.dart';
 /// Длинный текст свёрнут до нескольких строк и растворяется книзу —
 /// так видно, что там есть продолжение, и оно не съедает список.
 class WorkspacePanel extends StatefulWidget {
-  const WorkspacePanel({super.key, required this.markdown});
+  const WorkspacePanel({super.key, required this.markdown, required this.maxHeight});
 
   final String markdown;
 
+  /// Потолок для развёрнутой панели. Без него длинный README вытолкнул бы
+  /// список файлов за край окна вместе с кнопкой «свернуть» — и вернуть
+  /// всё назад было бы нечем. Внутри потолка текст листается.
+  final double maxHeight;
+
   /// До какой высоты ужимается свёрнутое описание.
   static const _collapsedHeight = 132.0;
+
+  /// Шапка панели с отступами — вычитается из потолка, чтобы он был
+  /// потолком всей панели, а не только текста.
+  static const _chromeHeight = 64.0;
 
   @override
   State<WorkspacePanel> createState() => _WorkspacePanelState();
@@ -69,7 +78,15 @@ class _WorkspacePanelState extends State<WorkspacePanel> {
             curve: NxMotion.curve,
             alignment: Alignment.topCenter,
             child: _expanded
-                ? SizedBox(width: double.infinity, child: body)
+                ? ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: (widget.maxHeight - WorkspacePanel._chromeHeight)
+                          .clamp(WorkspacePanel._collapsedHeight, double.infinity),
+                    ),
+                    child: SingleChildScrollView(
+                      child: SizedBox(width: double.infinity, child: body),
+                    ),
+                  )
                 : _Faded(
                     height: WorkspacePanel._collapsedHeight,
                     child: body,
@@ -81,8 +98,10 @@ class _WorkspacePanelState extends State<WorkspacePanel> {
   }
 }
 
-/// Свёрнутый текст, растворяющийся книзу. Обрезка по высоте сама по себе
-/// выглядит как оборванная строка — градиент показывает, что там ещё есть.
+/// Свёрнутый текст: не выше [height], растворяется книзу, если не влез.
+/// Обрезка сама по себе выглядит как оборванная строка — градиент
+/// показывает, что там есть продолжение. Короткому описанию гаснуть
+/// нечему, и оно занимает ровно столько, сколько занимает.
 class _Faded extends StatelessWidget {
   const _Faded({required this.height, required this.child});
 
@@ -91,25 +110,30 @@ class _Faded extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      width: double.infinity,
-      // OverflowBox отдаёт тексту всю нужную ему высоту, и без обрезки
-      // хвост нарисовался бы поверх списка файлов под панелью.
-      child: ClipRect(
-        child: ShaderMask(
-          shaderCallback: (rect) => const LinearGradient(
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: height),
+      child: ShaderMask(
+        // Прокрутка внизу ужимается к содержимому, поэтому её высота равна
+        // потолку ровно тогда, когда текст в него не влез. Только тогда и
+        // растворяем; иначе гасили бы хвост у текста, который виден целиком.
+        shaderCallback: (rect) {
+          final overflowing = rect.height >= height - 0.5;
+          return LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.white, Colors.white, Colors.transparent],
-            stops: [0, 0.62, 1],
-          ).createShader(rect),
-          blendMode: BlendMode.dstIn,
-          child: OverflowBox(
-            alignment: Alignment.topLeft,
-            maxHeight: double.infinity,
-            child: child,
-          ),
+            colors: overflowing
+                ? const [Colors.white, Colors.white, Colors.transparent]
+                : const [Colors.white, Colors.white, Colors.white],
+            stops: const [0, 0.62, 1],
+          ).createShader(rect);
+        },
+        blendMode: BlendMode.dstIn,
+        // Прокрутка — только ради раскладки: она даёт тексту любую высоту,
+        // сама ужимается к нему и обрезает лишнее. Листать её нельзя —
+        // для этого есть «показать целиком».
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          child: SizedBox(width: double.infinity, child: child),
         ),
       ),
     );
@@ -275,16 +299,20 @@ class _MarkdownState extends State<_Markdown> {
 
       final quote = RegExp(r'^\s*>\s?(.*)$').firstMatch(line);
       if (quote != null) {
-        out.add(Padding(
-          padding: const EdgeInsets.only(left: 2, top: 2, bottom: 2),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Container(width: 2, color: t.accent.a2.withValues(alpha: 0.6)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _inline(quote.group(1)!, context,
-                  base: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.55)),
+        // Полоса слева — рамкой контейнера, а не отдельным виджетом в Row
+        // со stretch: у панели нет ограничения по высоте, и stretch
+        // потребовал бы от полосы бесконечной высоты. В отладке это
+        // исключение, в релизе — молча пустая панель.
+        out.add(Container(
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.only(left: 12),
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: t.accent.a2.withValues(alpha: 0.6), width: 2),
             ),
-          ]),
+          ),
+          child: _inline(quote.group(1)!, context,
+              base: NxType.bodyText.copyWith(color: p.sub, fontSize: 12.5, height: 1.55)),
         ));
         continue;
       }
