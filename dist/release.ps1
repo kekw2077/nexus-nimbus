@@ -93,9 +93,18 @@ Step 'Запись в appcast.xml'
 $appcastPath = Join-Path $dist 'appcast.xml'
 $appcast = Get-Content $appcastPath -Raw
 
+# Запись встаёт ПЕРВОЙ, сразу после метки — и это не вопрос порядка:
+# WinSparkle 0.8.1 читает только первый <item> и сравнивает с установленной
+# версией его одного. Пока наверху стояла 0.1.0, ни одна копия обновления
+# не видела, хотя своё окно приложение показывало (оно сортирует по версии).
 $marker = '<!-- NIMBUS:NEXT-RELEASE -->'
-if ($appcast -notmatch [regex]::Escape($marker)) {
+$at = $appcast.IndexOf($marker)
+if ($at -lt 0) {
   throw "В appcast.xml нет строки-метки $marker — вставлять запись некуда."
+}
+$firstItem = $appcast.IndexOf('<item>')
+if ($firstItem -ge 0 -and $firstItem -lt $at) {
+  throw 'В appcast.xml есть <item> выше метки NIMBUS:NEXT-RELEASE. Метка должна стоять над всеми записями — иначе WinSparkle прочтёт старую версию первой.'
 }
 if ($appcast -match "sparkle:version=`"$([regex]::Escape($Version))`"") {
   throw "Версия $Version уже есть в appcast.xml. Поднимите номер или уберите старую запись."
@@ -150,14 +159,12 @@ $items
         sparkle:dsaSignature="$($signed.Signature)"
         nimbus:sha256="$($signed.Sha256)" />
     </item>
-
-    $marker
 "@
 
 # Подставляем строкой, а не -replace: в подписи и заметках попадаются $ и \,
 # которые оператор замены принял бы за ссылки на группы.
-$at = $appcast.IndexOf($marker)
-$appcast = $appcast.Substring(0, $at) + $item.TrimStart() + $appcast.Substring($at + $marker.Length)
+$after = $at + $marker.Length
+$appcast = $appcast.Substring(0, $after) + "`n" + $item.TrimEnd() + $appcast.Substring($after)
 Set-Content $appcastPath $appcast -NoNewline -Encoding UTF8
 
 Write-Host "appcast.xml дополнен записью $Version"

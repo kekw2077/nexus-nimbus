@@ -29,13 +29,16 @@
     <description>Обновления Nexus Nimbus для Windows</description>
     <language>ru</language>
 
-    <!-- НОВЫЕ ЗАПИСИ ДОБАВЛЯЮТСЯ СВЕРХУ. Строку-метку ниже ищет release.ps1,
-         чтобы вставить очередной выпуск — не удалять её. -->
+    <!-- НОВЫЕ ЗАПИСИ — СВЕРХУ, И ЭТО НЕ ПРОСТО ПОРЯДОК: WinSparkle 0.8.1 берёт
+         ПЕРВУЮ запись и сравнивает только её. Стоит наверху старая версия —
+         установленные копии обновления не увидят. release.ps1 вставляет
+         запись сразу после этой метки; не удалять её. -->
+    <!-- NIMBUS:NEXT-RELEASE -->
     <item>
-      <title>Nexus Nimbus 0.1.0</title>
-      <pubDate>Sat, 05 Sep 2026 13:02:00 +0000</pubDate>
-      <sparkle:version>0.1.0</sparkle:version>
-      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <title>Nexus Nimbus 0.3.3</title>
+      <pubDate>Fri, 11 Sep 2026 12:47:38 +0000</pubDate>
+      <sparkle:version>0.3.3</sparkle:version>
+      <sparkle:shortVersionString>0.3.3</sparkle:shortVersionString>
       <description><![CDATA[
         <style>
           html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
@@ -46,24 +49,27 @@
           li{margin:5px 0;}
         </style>
         <ul>
-          <li>Первая версия: просмотр файлов Nextcloud, статусы присутствия, передачи, файловые операции.</li>
+          <li>Описание папки (README) показывается внутри панели с файлами: сворачивается, прячется совсем, возвращается из настроек</li>
+          <li>Больше свойств Nextcloud: общий доступ «мне» и «мной», счётчики содержимого папки, даты создания и загрузки, блокировка файла</li>
+          <li>Скачанное сверяется с контрольной суммой сервера — побитая копия не попадает в кэш</li>
+          <li>Заливка большой папки: одна строка на папку в передачах, честный счётчик «найдено N файлов» вместо нуля</li>
         </ul>
       ]]></description>
       <enclosure
-        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.1.0/NexusNimbus-Setup-0.1.0.exe"
-        sparkle:version="0.1.0"
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.3/NexusNimbus-Setup-0.3.3.exe"
+        sparkle:version="0.3.3"
         sparkle:os="windows"
-        length="12390991"
+        length="13119006"
         type="application/octet-stream"
-        sparkle:dsaSignature="MDwCHFtZ77vuxxdZiejcI2/bkV8zyQX2RHs6y09UmsYCHEAsmLW7TgMTrkPCHGuf3w+MUoRo/cFOt0CmJDg="
-        nimbus:sha256="096d2999bfe65609f1c3d9c30a000c78dbf23b79e2527bd0b20dfea32fca0085" />
+        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
+        sparkle:dsaSignature="MDwCHCsc5v5SlycsFB4xrwemG0Oqz8GrgZH9YN3gzbkCHHQ5vS6YGrDlCQCEtQ/TZoDyTG0q006QXXiqZhE="
+        nimbus:sha256="e241406c042ba2f231c280256febef3d7cb34be7b52df82f7fe399ba763197f7" />
     </item>
-
     <item>
-      <title>Nexus Nimbus 0.2.0</title>
-      <pubDate>Sat, 05 Sep 2026 14:23:17 +0000</pubDate>
-      <sparkle:version>0.2.0</sparkle:version>
-      <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+      <title>Nexus Nimbus 0.3.2</title>
+      <pubDate>Mon, 07 Sep 2026 17:56:02 +0000</pubDate>
+      <sparkle:version>0.3.2</sparkle:version>
+      <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
       <description><![CDATA[
         <style>
           html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
@@ -74,23 +80,53 @@
           li{margin:5px 0;}
         </style>
         <ul>
-          <li>Корзина сервера: восстановление на прежнее место, удаление насовсем, очистка целиком.</li>
-          <li>Папка для скачанных файлов выбирается в настройках — уже скачанное переезжает следом.</li>
-          <li>Размер и положение окна запоминаются между запусками.</li>
-          <li>Оформление приведено к макету: кнопки, боковое меню, контекстные меню, свечение значков.</li>
-          <li>Фон стал светлее, сетка точек убрана — в списке файлов она мешала читать строки.</li>
+          <li>Перед обновлением спрашиваем подтверждение: программа закроется и откроется заново.</li>
+          <li>Программа снова открывается сама после обновления — прежде она молча закрывалась.</li>
+          <li>Обновление больше не висит полминуты: окно теперь отвечает установщику на просьбу закрыться.</li>
         </ul>
       ]]></description>
       <enclosure
-        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.2.0/NexusNimbus-Setup-0.2.0.exe"
-        sparkle:version="0.2.0"
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.2/NexusNimbus-Setup-0.3.2.exe"
+        sparkle:version="0.3.2"
         sparkle:os="windows"
-        length="12410262"
+        length="13090908"
         type="application/octet-stream"
-        sparkle:dsaSignature="MDwCHGRrmiw5glaIuJ05CgWskCPUE1YywMji9poPQ5oCHCfWqHZ4Wi/HLqkqUf6CFfvrLxH4k9fl2j1V0UI="
-        nimbus:sha256="c3232b2f4c80d827f13d73fc604c1f8b31a3b6e31298f34d7714d50337cbad09" />
+        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
+        sparkle:dsaSignature="MDwCHEPho9YfGquWFD1hkXAMSoGQ/XTWOC2WcM3qizYCHEGypZAVlusWD4YW0Lt0xPtHZIjxXgayBgDbHJA="
+        nimbus:sha256="52baa3f37a8e5f549c8834cec6113a52d50335c6e2b3bd862f0b774b2ba70ad9" />
     </item>
-
+    <item>
+      <title>Nexus Nimbus 0.3.1</title>
+      <pubDate>Mon, 07 Sep 2026 17:30:27 +0000</pubDate>
+      <sparkle:version>0.3.1</sparkle:version>
+      <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
+      <description><![CDATA[
+        <style>
+          html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#F2F4F8;}
+          a{color:#3F63D1;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Светлая тема с фоном «Шейдер» стала читаемой: у текста появилась обводка, панели плотнее.</li>
+          <li>Фон «Шейдер» приведён к «Авроре» — светит снизу и гаснет кверху, а не заливает всё окно.</li>
+          <li>Панель учётных записей больше не вылезает за границу боковой полосы.</li>
+          <li>Убрана графа «Анимации» из настроек.</li>
+          <li>Обновление наконец ставится молча: мешал мьютекс в установщике.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.1/NexusNimbus-Setup-0.3.1.exe"
+        sparkle:version="0.3.1"
+        sparkle:os="windows"
+        length="13088037"
+        type="application/octet-stream"
+        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
+        sparkle:dsaSignature="MDwCHGMHlI/L7p5x7ToqwM3KDKJLeMh76qebat5qLrMCHDiCuJkoKPhJ3RU31vvX/tC9eVG+QwAdzycD9Tg="
+        nimbus:sha256="4c6040c2f0e5bd6c4e68e7a261e91654a69ed82634cbf1ec1f83e528c79e8f6a" />
+    </item>
     <item>
       <title>Nexus Nimbus 0.3.0</title>
       <pubDate>Mon, 07 Sep 2026 16:43:37 +0000</pubDate>
@@ -126,12 +162,11 @@
         sparkle:dsaSignature="MDwCHE+MLVxNRl4+4/GCWeYANgbZ6p621k0Z47iFR1QCHCooaQITB+fUViM7g+FklBEdKb6dkz/CJgz6ddA="
         nimbus:sha256="9c94bacf9298e8765a24705cbc98c9ff7225bc3551c2db068bbb8df9b26ffa45" />
     </item>
-
     <item>
-      <title>Nexus Nimbus 0.3.1</title>
-      <pubDate>Mon, 07 Sep 2026 17:30:27 +0000</pubDate>
-      <sparkle:version>0.3.1</sparkle:version>
-      <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
+      <title>Nexus Nimbus 0.2.0</title>
+      <pubDate>Sat, 05 Sep 2026 14:23:17 +0000</pubDate>
+      <sparkle:version>0.2.0</sparkle:version>
+      <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
       <description><![CDATA[
         <style>
           html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
@@ -142,29 +177,27 @@
           li{margin:5px 0;}
         </style>
         <ul>
-          <li>Светлая тема с фоном «Шейдер» стала читаемой: у текста появилась обводка, панели плотнее.</li>
-          <li>Фон «Шейдер» приведён к «Авроре» — светит снизу и гаснет кверху, а не заливает всё окно.</li>
-          <li>Панель учётных записей больше не вылезает за границу боковой полосы.</li>
-          <li>Убрана графа «Анимации» из настроек.</li>
-          <li>Обновление наконец ставится молча: мешал мьютекс в установщике.</li>
+          <li>Корзина сервера: восстановление на прежнее место, удаление насовсем, очистка целиком.</li>
+          <li>Папка для скачанных файлов выбирается в настройках — уже скачанное переезжает следом.</li>
+          <li>Размер и положение окна запоминаются между запусками.</li>
+          <li>Оформление приведено к макету: кнопки, боковое меню, контекстные меню, свечение значков.</li>
+          <li>Фон стал светлее, сетка точек убрана — в списке файлов она мешала читать строки.</li>
         </ul>
       ]]></description>
       <enclosure
-        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.1/NexusNimbus-Setup-0.3.1.exe"
-        sparkle:version="0.3.1"
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.2.0/NexusNimbus-Setup-0.2.0.exe"
+        sparkle:version="0.2.0"
         sparkle:os="windows"
-        length="13088037"
+        length="12410262"
         type="application/octet-stream"
-        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
-        sparkle:dsaSignature="MDwCHGMHlI/L7p5x7ToqwM3KDKJLeMh76qebat5qLrMCHDiCuJkoKPhJ3RU31vvX/tC9eVG+QwAdzycD9Tg="
-        nimbus:sha256="4c6040c2f0e5bd6c4e68e7a261e91654a69ed82634cbf1ec1f83e528c79e8f6a" />
+        sparkle:dsaSignature="MDwCHGRrmiw5glaIuJ05CgWskCPUE1YywMji9poPQ5oCHCfWqHZ4Wi/HLqkqUf6CFfvrLxH4k9fl2j1V0UI="
+        nimbus:sha256="c3232b2f4c80d827f13d73fc604c1f8b31a3b6e31298f34d7714d50337cbad09" />
     </item>
-
     <item>
-      <title>Nexus Nimbus 0.3.2</title>
-      <pubDate>Mon, 07 Sep 2026 17:56:02 +0000</pubDate>
-      <sparkle:version>0.3.2</sparkle:version>
-      <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
+      <title>Nexus Nimbus 0.1.0</title>
+      <pubDate>Sat, 05 Sep 2026 13:02:00 +0000</pubDate>
+      <sparkle:version>0.1.0</sparkle:version>
+      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
       <description><![CDATA[
         <style>
           html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
@@ -175,22 +208,17 @@
           li{margin:5px 0;}
         </style>
         <ul>
-          <li>Перед обновлением спрашиваем подтверждение: программа закроется и откроется заново.</li>
-          <li>Программа снова открывается сама после обновления — прежде она молча закрывалась.</li>
-          <li>Обновление больше не висит полминуты: окно теперь отвечает установщику на просьбу закрыться.</li>
+          <li>Первая версия: просмотр файлов Nextcloud, статусы присутствия, передачи, файловые операции.</li>
         </ul>
       ]]></description>
       <enclosure
-        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.2/NexusNimbus-Setup-0.3.2.exe"
-        sparkle:version="0.3.2"
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.1.0/NexusNimbus-Setup-0.1.0.exe"
+        sparkle:version="0.1.0"
         sparkle:os="windows"
-        length="13090908"
+        length="12390991"
         type="application/octet-stream"
-        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
-        sparkle:dsaSignature="MDwCHEPho9YfGquWFD1hkXAMSoGQ/XTWOC2WcM3qizYCHEGypZAVlusWD4YW0Lt0xPtHZIjxXgayBgDbHJA="
-        nimbus:sha256="52baa3f37a8e5f549c8834cec6113a52d50335c6e2b3bd862f0b774b2ba70ad9" />
+        sparkle:dsaSignature="MDwCHFtZ77vuxxdZiejcI2/bkV8zyQX2RHs6y09UmsYCHEAsmLW7TgMTrkPCHGuf3w+MUoRo/cFOt0CmJDg="
+        nimbus:sha256="096d2999bfe65609f1c3d9c30a000c78dbf23b79e2527bd0b20dfea32fca0085" />
     </item>
-
-    <!-- NIMBUS:NEXT-RELEASE -->
   </channel>
 </rss>
