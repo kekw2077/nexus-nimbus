@@ -37,7 +37,7 @@
     <!-- NIMBUS:NEXT-RELEASE -->
     <item>
       <title>Nexus Nimbus 0.3.5</title>
-      <pubDate>Mon, 14 Sep 2026 12:26:26 +0000</pubDate>
+      <pubDate>Mon, 14 Sep 2026 13:03:38 +0000</pubDate>
       <sparkle:version>0.3.5</sparkle:version>
       <sparkle:shortVersionString>0.3.5</sparkle:shortVersionString>
       <description><![CDATA[
@@ -58,43 +58,12 @@
         url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.5/NexusNimbus-Setup-0.3.5.exe"
         sparkle:version="0.3.5"
         sparkle:os="windows"
-        length="12352132"
+        length="12352135"
         type="application/octet-stream"
         sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
-        sparkle:dsaSignature="MDwCHAhVPVy9GIlUsIBsaz/LD45/ZReUjz+APgYMbfECHHB11Fq22c3ZVkGxM1PfalG2Uoo1cSxsF4UbBRE="
-        nimbus:sha256="2c2a293b010ce95474f127a016df61d0ccd7b2cb1606ce9c646d5812b4da5fdf" />
+        sparkle:dsaSignature="MDwCHAoKG9hWghpqGSc21nmweZgs9lHcQTKXeQbb3yACHGOKxqJtT2V8vZ72OJOgLbtl4j7/bN2WiDnysvY="
+        nimbus:sha256="0810be385f3070d6a6eae9a593c95305f09230208b620204230db6e393d67a80" />
     </item>    <item>
-      <title>Nexus Nimbus 0.3.3</title>
-      <pubDate>Fri, 11 Sep 2026 12:47:38 +0000</pubDate>
-      <sparkle:version>0.3.3</sparkle:version>
-      <sparkle:shortVersionString>0.3.3</sparkle:shortVersionString>
-      <description><![CDATA[
-        <style>
-          html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
-            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
-          h1,h2,h3,b,strong{color:#F2F4F8;}
-          a{color:#3F63D1;}
-          ul{margin:6px 0;padding-left:20px;}
-          li{margin:5px 0;}
-        </style>
-        <ul>
-          <li>Описание папки (README) показывается внутри панели с файлами: сворачивается, прячется совсем, возвращается из настроек</li>
-          <li>Больше свойств Nextcloud: общий доступ «мне» и «мной», счётчики содержимого папки, даты создания и загрузки, блокировка файла</li>
-          <li>Скачанное сверяется с контрольной суммой сервера — побитая копия не попадает в кэш</li>
-          <li>Заливка большой папки: одна строка на папку в передачах, честный счётчик «найдено N файлов» вместо нуля</li>
-        </ul>
-      ]]></description>
-      <enclosure
-        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.3/NexusNimbus-Setup-0.3.3.exe"
-        sparkle:version="0.3.3"
-        sparkle:os="windows"
-        length="13119006"
-        type="application/octet-stream"
-        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
-        sparkle:dsaSignature="MDwCHCsc5v5SlycsFB4xrwemG0Oqz8GrgZH9YN3gzbkCHHQ5vS6YGrDlCQCEtQ/TZoDyTG0q006QXXiqZhE="
-        nimbus:sha256="e241406c042ba2f231c280256febef3d7cb34be7b52df82f7fe399ba763197f7" />
-    </item>
-    <item>
       <title>Nexus Nimbus 0.3.2</title>
       <pubDate>Mon, 07 Sep 2026 17:56:02 +0000</pubDate>
       <sparkle:version>0.3.2</sparkle:version>

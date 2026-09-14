@@ -472,12 +472,19 @@ class UpdaterService extends ChangeNotifier {
       // запуск, см. _sweepDownloads.
       file = null;
 
+      // Уйти надо быстро и наверняка. Установщик через полсекунды после
+      // старта ищет, кто держит его файлы, и застрявшую копию закрывает
+      // силой — восемь секунд ожидания; а если старая копия ещё жива, когда
+      // он поднимает новую, та по правилу единственности отдаст ей фокус
+      // и выйдет — «после обновления программа не открылась». Поэтому
+      // аккуратный выход через трей — с таймаутом, и в любом случае exit.
       final quit = onQuit;
       if (quit != null) {
-        await quit();
-      } else {
-        exit(0);
+        try {
+          await quit().timeout(const Duration(seconds: 2));
+        } catch (_) {}
       }
+      exit(0);
     } on _UpdateException catch (e) {
       _fail(e.message);
     } catch (e) {
