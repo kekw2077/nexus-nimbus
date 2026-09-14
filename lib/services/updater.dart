@@ -151,9 +151,15 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
 
   Future<void> init() async {
     if (!Platform.isWindows) return;
+    String? version;
     try {
-      _currentVersion = (await PackageInfo.fromPlatform()).version;
+      version = (await PackageInfo.fromPlatform()).version;
+      _currentVersion = version;
     } catch (_) {}
+
+    // До setFeedURL: там плагин запускает WinSparkle, и позже он этих
+    // настроек уже не перечитает.
+    WinSparkle.configure(version: version);
 
     autoUpdater.addListener(this);
     await _applyFeed();
@@ -163,10 +169,10 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
 
   Future<void> _applyFeed() async {
     try {
+      // Своё расписание WinSparkle выключено в WinSparkle.configure —
+      // проверять будем сами. setScheduledCheckInterval(0) для этого не
+      // годится: меньше часа WinSparkle не принимает и ноль превращал в час.
       await autoUpdater.setFeedURL(effectiveFeedUrl);
-      // Своё расписание WinSparkle выключаем: сработав, оно показало бы
-      // собственное окно поверх нашего. Проверять будем сами.
-      await autoUpdater.setScheduledCheckInterval(0);
     } catch (e) {
       _status = UpdateStatus.failed;
       _message = 'Не удалось настроить канал обновлений: $e';
