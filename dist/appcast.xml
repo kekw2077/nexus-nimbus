@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Канал обновлений Nexus Nimbus (WinSparkle / auto_updater).
+  Канал обновлений Nexus Nimbus (формат appcast, как у Sparkle/WinSparkle).
 
   Приложение читает этот файл, сравнивает sparkle:version с установленной
   версией и, если она новее, скачивает установщик, ПРОВЕРЯЕТ ЕГО ПОДПИСЬ
-  открытым ключом из dsa_pub.pem (зашит в exe через windows/runner/Runner.rc)
+  открытым ключом из dsa_pub.pem (зашит в lib/services/update_signature.dart)
   и запускает.
 
   Откуда берётся адрес канала — UpdaterService.effectiveFeedUrl, по убыванию
@@ -14,7 +14,7 @@
     3. этот файл на GitHub — канал по умолчанию.
 
   Репозиторий обязан быть ПУБЛИЧНЫМ: raw.githubusercontent отдаёт файл без
-  токена, а авторизоваться WinSparkle не умеет.
+  токена, а приложение читает канал без авторизации.
 
   Как выпустить версию — dist/README.md. Коротко: dist\release.ps1 -Version X.Y.Z
   соберёт, подпишет и впишет запись сюда, дальше dist\publish-to-github.ps1.
@@ -29,16 +29,17 @@
     <description>Обновления Nexus Nimbus для Windows</description>
     <language>ru</language>
 
-    <!-- НОВЫЕ ЗАПИСИ — СВЕРХУ, И ЭТО НЕ ПРОСТО ПОРЯДОК: WinSparkle 0.8.1 берёт
-         ПЕРВУЮ запись и сравнивает только её. Стоит наверху старая версия —
-         установленные копии обновления не увидят. release.ps1 вставляет
-         запись сразу после этой метки; не удалять её. -->
+    <!-- НОВЫЕ ЗАПИСИ — СВЕРХУ, И ЭТО НЕ ПРОСТО ПОРЯДОК: копии до 0.3.4
+         ставили обновления через WinSparkle 0.8.1, а он берёт ПЕРВУЮ запись
+         и сравнивает только её. Стоит наверху старая версия — такие копии
+         обновления не увидят. release.ps1 вставляет запись сразу после этой
+         метки; не удалять её. -->
     <!-- NIMBUS:NEXT-RELEASE -->
     <item>
-      <title>Nexus Nimbus 0.3.4</title>
-      <pubDate>Mon, 14 Sep 2026 10:53:21 +0000</pubDate>
-      <sparkle:version>0.3.4</sparkle:version>
-      <sparkle:shortVersionString>0.3.4</sparkle:shortVersionString>
+      <title>Nexus Nimbus 0.3.5</title>
+      <pubDate>Mon, 14 Sep 2026 12:26:26 +0000</pubDate>
+      <sparkle:version>0.3.5</sparkle:version>
+      <sparkle:shortVersionString>0.3.5</sparkle:shortVersionString>
       <description><![CDATA[
         <style>
           html,body{background:#07080C;color:#C7CBD6;margin:0;padding:14px 18px;
@@ -49,20 +50,20 @@
           li{margin:5px 0;}
         </style>
         <ul>
-          <li>Окно обновления WinSparkle больше не всплывает само раз в час и не предлагает поставить уже установленную версию</li>
+          <li>Обновление скачивает и ставит само приложение: одно окно с полосой загрузки, окон WinSparkle больше нет</li>
+          <li>Подпись установщика сверяется перед запуском, скачанный файл не вызывает SmartScreen</li>
         </ul>
       ]]></description>
       <enclosure
-        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.4/NexusNimbus-Setup-0.3.4.exe"
-        sparkle:version="0.3.4"
+        url="https://github.com/kekw2077/nexus-nimbus/releases/download/v0.3.5/NexusNimbus-Setup-0.3.5.exe"
+        sparkle:version="0.3.5"
         sparkle:os="windows"
-        length="13119904"
+        length="12352132"
         type="application/octet-stream"
         sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /RELAUNCH=1"
-        sparkle:dsaSignature="MDwCHAo+PrF4Ee0vFQEX/Abhwil5a+6VQ5MYuktIv58CHGLJlaZOENaGW8PkeSizG9exidc1CuhQs6G6gMY="
-        nimbus:sha256="53078c4068e469de857ae8e0e0456604084dea119d459a58d88732f10a25bd13" />
-    </item>
-    <item>
+        sparkle:dsaSignature="MDwCHAhVPVy9GIlUsIBsaz/LD45/ZReUjz+APgYMbfECHHB11Fq22c3ZVkGxM1PfalG2Uoo1cSxsF4UbBRE="
+        nimbus:sha256="2c2a293b010ce95474f127a016df61d0ccd7b2cb1606ce9c646d5812b4da5fdf" />
+    </item>    <item>
       <title>Nexus Nimbus 0.3.3</title>
       <pubDate>Fri, 11 Sep 2026 12:47:38 +0000</pubDate>
       <sparkle:version>0.3.3</sparkle:version>

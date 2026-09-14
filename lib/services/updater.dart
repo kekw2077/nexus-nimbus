@@ -2,14 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:auto_updater/auto_updater.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:xml/xml.dart';
 
 import 'prefs.dart';
-import 'win_sparkle.dart';
+import 'update_signature.dart';
 
 /// Один выпуск из канала обновлений.
 class ReleaseEntry {
@@ -20,6 +22,9 @@ class ReleaseEntry {
     this.publishedAt,
     this.size = 0,
     this.notes = const [],
+    this.sha256,
+    this.signature,
+    this.installerArguments = const [],
   });
 
   final String version;
@@ -33,6 +38,18 @@ class ReleaseEntry {
 
   final DateTime? publishedAt;
   final int size;
+
+  /// `nimbus:sha256` — быстрая сверка, что скачалось то, что выложено.
+  final String? sha256;
+
+  /// `sparkle:dsaSignature` — подпись закрытым ключом проекта. Без неё
+  /// установщик не запустится: это единственное, что отличает наш файл
+  /// от подсунутого по дороге.
+  final String? signature;
+
+  /// `sparkle:installerArguments` — ключи тихой установки. Без них человек
+  /// получил бы полный мастер вместо перезапуска.
+  final List<String> installerArguments;
 
   /// Сравнение версий по числам, а не по строкам: иначе 0.10.0 оказалась бы
   /// старше 0.9.0.
@@ -63,23 +80,37 @@ enum UpdateChannel {
   station,
 }
 
-enum UpdateStatus { idle, checking, available, upToDate, downloaded, failed }
+enum UpdateStatus {
+  idle,
+  checking,
+  available,
+  upToDate,
+  downloading,
+  verifying,
+  installing,
+  failed,
+}
 
-/// Обновления через WinSparkle (пакет auto_updater).
+/// Обновления: свой канал, своя загрузка, своя проверка подписи.
 ///
 /// Приходят **полные установщики**, а не патчи кода: значит, в обновление
 /// могут входить и нативные изменения — новый плагин, другая версия Flutter.
-/// Каждый установщик подписан закрытым DSA-ключом, а открытый зашит в exe
-/// через windows/runner/Runner.rc. Подпись не сойдётся — WinSparkle просто
-/// откажется ставить, поэтому подменить обновление по дороге нельзя.
-class UpdaterService extends ChangeNotifier with UpdaterListener {
+/// Каждый установщик подписан закрытым DSA-ключом, открытый зашит в
+/// [UpdateSignature]. Подпись не сойдётся — файл не запустится, поэтому
+/// подменить обновление по дороге нельзя.
+///
+/// Раньше скачивание и проверку делал WinSparkle (пакет auto_updater), и у
+/// него были свои окна мимо оформления, своё расписание, которое нельзя было
+/// выключить, и своё понимание версий, в котором «0.3.3+6» старше «0.3.3».
+/// Теперь всё это здесь, а на экране — одно окно, наше.
+class UpdaterService extends ChangeNotifier {
   UpdaterService(this._prefs);
 
   final Prefs _prefs;
 
   /// Запасной и основной канал: файл в публичном репозитории.
-  /// raw.githubusercontent отдаёт его без токена — WinSparkle авторизоваться
-  /// не умеет, поэтому репозиторий обязан быть публичным.
+  /// raw.githubusercontent отдаёт его без токена, и канал читается без
+  /// авторизации — поэтому репозиторий обязан быть публичным.
   static const githubFeedUrl =
       'https://raw.githubusercontent.com/kekw2077/nexus-nimbus/main/dist/appcast.xml';
 
@@ -87,7 +118,7 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
   /// не трогая настройки пользователя.
   static const envOverride = 'NIMBUS_UPDATE_FEED';
 
-  /// Раз в шесть часов. Меньше часа WinSparkle всё равно не примет.
+  /// Раз в шесть часов.
   static const checkInterval = Duration(hours: 6);
 
   UpdateStatus _status = UpdateStatus.idle;
@@ -151,59 +182,21 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
 
   Future<void> init() async {
     if (!Platform.isWindows) return;
-    String? version;
     try {
-      version = (await PackageInfo.fromPlatform()).version;
-      _currentVersion = version;
+      _currentVersion = (await PackageInfo.fromPlatform()).version;
     } catch (_) {}
-
-    // До setFeedURL: там плагин запускает WinSparkle, и позже он этих
-    // настроек уже не перечитает.
-    WinSparkle.configure(version: version);
-
-    autoUpdater.addListener(this);
-    await _applyFeed();
     _ready = true;
     notifyListeners();
-  }
 
-  Future<void> _applyFeed() async {
-    try {
-      // Своё расписание WinSparkle выключено в WinSparkle.configure —
-      // проверять будем сами. setScheduledCheckInterval(0) для этого не
-      // годится: меньше часа WinSparkle не принимает и ноль превращал в час.
-      await autoUpdater.setFeedURL(effectiveFeedUrl);
-    } catch (e) {
-      _status = UpdateStatus.failed;
-      _message = 'Не удалось настроить канал обновлений: $e';
-      notifyListeners();
-    }
-  }
-
-  /// Проверка по кнопке: WinSparkle сам покажет окно с описанием версии
-  /// и спросит, ставить ли. В фоне (`inBackground`) окно появляется только
-  /// если обновление действительно есть.
-  Future<void> check({bool inBackground = false}) async {
-    if (!_ready || !Platform.isWindows) return;
-    _status = UpdateStatus.checking;
-    _message = null;
-    notifyListeners();
-    try {
-      await autoUpdater.checkForUpdates(inBackground: inBackground);
-    } catch (e) {
-      _status = UpdateStatus.failed;
-      _message = e.toString();
-      notifyListeners();
-    }
+    // Установщики одноразовые: что осталось с прошлого раза, то не нужно.
+    unawaited(_sweepDownloads());
   }
 
   // ------------------------------------------------------- прежние версии
 
-  /// Все выпуски из канала, от новых к старым.
-  ///
-  /// Читаем канал сами, а не через WinSparkle: он умеет ровно одно —
-  /// поставить самое новое. Список нужен, чтобы можно было вернуться назад,
-  /// когда в свежей версии что-то сломалось.
+  /// Все выпуски из канала, от новых к старым. Список нужен и для
+  /// проверки, и чтобы можно было вернуться назад, когда в свежей версии
+  /// что-то сломалось.
   Future<List<ReleaseEntry>> listReleases() async {
     final uri = Uri.parse(effectiveFeedUrl);
     final res = await http.get(uri);
@@ -240,6 +233,12 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
         publishedAt: _rfc822(_text(item, 'pubDate')),
         size: int.tryParse(enclosure.getAttribute('length') ?? '') ?? 0,
         notes: _notes(_text(item, 'description')),
+        sha256: _attr(enclosure, 'sha256'),
+        signature: _attr(enclosure, 'dsaSignature'),
+        installerArguments: (_attr(enclosure, 'installerArguments') ?? '')
+            .split(RegExp(r'\s+'))
+            .where((a) => a.isNotEmpty)
+            .toList(growable: false),
       ));
     }
 
@@ -286,6 +285,18 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
         .replaceAll('&apos;', "'")
         .replaceAll('&amp;', '&')
         .trim();
+  }
+
+  /// Атрибут enclosure без учёта префикса: `sparkle:dsaSignature`,
+  /// `nimbus:sha256` — префиксы разные, а смысл у каждого один.
+  static String? _attr(XmlElement el, String name) {
+    for (final a in el.attributes) {
+      if (a.name.local == name) {
+        final v = a.value.trim();
+        return v.isEmpty ? null : v;
+      }
+    }
+    return null;
   }
 
   /// Значение дочернего элемента без учёта пространства имён: в appcast
@@ -347,11 +358,10 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
     notifyListeners();
   }
 
-  /// Ищет выпуск новее установленного. Канал читаем сами, а не отдаём
-  /// WinSparkle: его окно нарисовано обычными органами Windows и мимо всего
-  /// оформления. Спрашивать будет наше окно, а ему остаётся скачивание
-  /// и сверка подписи.
+  /// Ищет выпуск новее установленного. Пока идёт установка, не лезем:
+  /// иначе проверка по расписанию сбила бы ход скачивания.
   Future<ReleaseEntry?> findUpdate({bool ignoreSkipped = false}) async {
+    if (busy) return _found;
     _status = UpdateStatus.checking;
     _message = null;
     notifyListeners();
@@ -386,94 +396,250 @@ class UpdaterService extends ChangeNotifier with UpdaterListener {
     }
   }
 
-  /// Ставит найденное обновление. Скачивание и сверку подписи делает
-  /// WinSparkle — писать это самим значило бы обойти проверку, ради которой
-  /// заведён ключ.
-  Future<void> install() async {
-    if (!Platform.isWindows) return;
-    _found = null;
+  // ------------------------------------------------------- установка
 
-    if (WinSparkle.checkAndInstall()) {
-      _status = UpdateStatus.downloaded;
-      _message = 'Скачиваем обновление…';
-      notifyListeners();
+  /// Чем закончить, когда установщик запущен. Задаёт main.dart: выход
+  /// через трей снимает перехват закрытия и убирает значок, а самому
+  /// сервису об этом знать незачем.
+  Future<void> Function()? onQuit;
+
+  int _received = 0;
+  int _total = 0;
+  http.Client? _client;
+  bool _cancelled = false;
+
+  /// Скачано и всего, байтами. Всего — ноль, пока сервер не сказал.
+  int get received => _received;
+  int get total => _total;
+
+  /// Доля скачанного, если размер известен.
+  double? get progress => _total > 0 ? (_received / _total).clamp(0.0, 1.0) : null;
+
+  /// Идёт скачивание, проверка или запуск установщика.
+  bool get busy =>
+      _status == UpdateStatus.downloading ||
+      _status == UpdateStatus.verifying ||
+      _status == UpdateStatus.installing;
+
+  /// Скачивает установщик, сверяет длину, sha256 и подпись, запускает его
+  /// тихо и закрывает программу. Установщик сам поднимет новую версию
+  /// (`/RELAUNCH=1`, см. dist/installer.iss).
+  ///
+  /// Файл пишем сами, а не через браузер или системный загрузчик — поэтому
+  /// на нём нет отметки «получен из интернета», и SmartScreen молчит.
+  Future<void> install(ReleaseEntry release) async {
+    if (!Platform.isWindows || busy) return;
+    if (release.signature == null) {
+      _fail('В записи канала нет подписи — такой установщик не запускаем.');
       return;
     }
 
-    // Обхода нет — отдаём пакету вместе с его собственным окном.
-    await check();
+    _found = null;
+    _cancelled = false;
+    _received = 0;
+    _total = release.size;
+    _status = UpdateStatus.downloading;
+    _message = 'Скачиваем ${release.version}…';
+    notifyListeners();
+
+    File? file;
+    try {
+      final dir = await _downloadDir();
+      file = File(p.join(dir.path, _fileName(release)));
+
+      final digests = await _download(release, file);
+      if (_cancelled) return;
+
+      _status = UpdateStatus.verifying;
+      _message = 'Проверяем подпись…';
+      notifyListeners();
+
+      final why = _verify(release, digests, await file.length());
+      if (why != null) throw _UpdateException(why);
+
+      _status = UpdateStatus.installing;
+      _message = 'Ставим ${release.version}, программа закроется…';
+      notifyListeners();
+
+      await Process.start(
+        file.path,
+        release.installerArguments.isEmpty
+            ? const ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/RELAUNCH=1']
+            : release.installerArguments,
+        mode: ProcessStartMode.detached,
+      );
+      // Файл не удаляем: его сейчас читает установщик. Уберёт следующий
+      // запуск, см. _sweepDownloads.
+      file = null;
+
+      final quit = onQuit;
+      if (quit != null) {
+        await quit();
+      } else {
+        exit(0);
+      }
+    } on _UpdateException catch (e) {
+      _fail(e.message);
+    } catch (e) {
+      if (_cancelled) return;
+      _fail('Не удалось скачать обновление: $e');
+    } finally {
+      _client?.close();
+      _client = null;
+      if (file != null) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Останавливает скачивание. Предложение остаётся в силе — окно можно
+  /// открыть снова из настроек.
+  void cancelInstall() {
+    if (_status != UpdateStatus.downloading) return;
+    _cancelled = true;
+    _client?.close();
+    _status = UpdateStatus.idle;
+    _message = null;
+    notifyListeners();
+  }
+
+  void _fail(String message) {
+    _status = UpdateStatus.failed;
+    _message = message;
+    notifyListeners();
+  }
+
+  /// Потоком в файл, попутно считая оба хеша — второго прохода по 13 МБ
+  /// не нужно. Прогресс сообщаем не чаще нескольких раз в секунду: каждая
+  /// порция — перерисовка окна.
+  Future<_Digests> _download(ReleaseEntry release, File file) async {
+    final client = _client = http.Client();
+    final response =
+        await client.send(http.Request('GET', Uri.parse(release.installerUrl)));
+    if (response.statusCode != 200) {
+      throw _UpdateException(
+          'Сервер не отдал установщик (${response.statusCode}): ${release.installerUrl}');
+    }
+    if (_total <= 0) _total = response.contentLength ?? 0;
+
+    final sha1Out = _DigestSink();
+    final sha256Out = _DigestSink();
+    final sha1In = sha1.startChunkedConversion(sha1Out);
+    final sha256In = sha256.startChunkedConversion(sha256Out);
+
+    final sink = file.openWrite();
+    var lastTick = DateTime.now();
+    try {
+      await for (final chunk in response.stream) {
+        if (_cancelled) break;
+        sink.add(chunk);
+        sha1In.add(chunk);
+        sha256In.add(chunk);
+        _received += chunk.length;
+
+        final now = DateTime.now();
+        if (now.difference(lastTick).inMilliseconds >= 150) {
+          lastTick = now;
+          notifyListeners();
+        }
+      }
+    } finally {
+      await sink.close();
+    }
+    sha1In.close();
+    sha256In.close();
+    notifyListeners();
+    return _Digests(sha1Out.value!, sha256Out.value!);
+  }
+
+  /// Почему файлу нельзя верить; `null` — всё сошлось.
+  static String? _verify(ReleaseEntry release, _Digests d, int length) {
+    if (release.size > 0 && length != release.size) {
+      return 'Установщик скачался не целиком: $length байт вместо ${release.size}.';
+    }
+    if (release.sha256 != null &&
+        d.sha256.toString().toLowerCase() != release.sha256!.toLowerCase()) {
+      return 'Контрольная сумма установщика не сошлась с каналом.';
+    }
+    if (!UpdateSignature.verify(fileSha1: d.sha1, signatureBase64: release.signature!)) {
+      return 'Подпись установщика не сошлась — файл не тот, что выпускали.';
+    }
+    return null;
+  }
+
+  static String _fileName(ReleaseEntry release) {
+    final fromUrl = Uri.tryParse(release.installerUrl)?.pathSegments.lastOrNull;
+    return (fromUrl != null && fromUrl.toLowerCase().endsWith('.exe'))
+        ? fromUrl
+        : 'NexusNimbus-Setup-${release.version}.exe';
+  }
+
+  /// Своя папка в данных приложения, а не временная: установщик должен
+  /// дожить до запуска, а системный temp иногда чистят на ходу.
+  static Future<Directory> _downloadDir() async {
+    final dir =
+        Directory(p.join((await getApplicationSupportDirectory()).path, 'updates'));
+    await dir.create(recursive: true);
+    return dir;
+  }
+
+  Future<void> _sweepDownloads() async {
+    try {
+      final dir = await _downloadDir();
+      await for (final f in dir.list()) {
+        if (f is File && f.path.toLowerCase().endsWith('.exe')) {
+          try {
+            await f.delete();
+          } catch (_) {
+            // Ещё занят установщиком — уберётся в следующий раз.
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> setChannel(UpdateChannel value) async {
     await _prefs.writeUpdateChannel(value);
-    await _applyFeed();
     notifyListeners();
   }
 
   Future<void> setStationUrl(String value) async {
     await _prefs.writeUpdateServer(value.trim());
-    await _applyFeed();
     notifyListeners();
   }
 
   Future<void> setAutoCheck(bool value) async {
     await _prefs.writeAutoCheck(value);
-    await _applyFeed();
-    notifyListeners();
-  }
-
-  // ---------------------------------------------------- события WinSparkle
-
-  @override
-  void onUpdaterCheckingForUpdate(Appcast? appcast) {
-    _status = UpdateStatus.checking;
-    _message = null;
-    notifyListeners();
-  }
-
-  @override
-  void onUpdaterUpdateAvailable(AppcastItem? item) {
-    _status = UpdateStatus.available;
-    _availableVersion = item?.displayVersionString ?? item?.versionString;
-    _message = 'Доступна версия ${_availableVersion ?? '—'}';
-    notifyListeners();
-  }
-
-  @override
-  void onUpdaterUpdateNotAvailable(UpdaterError? error) {
-    _status = UpdateStatus.upToDate;
-    _message = 'Установлена последняя версия';
-    notifyListeners();
-  }
-
-  @override
-  void onUpdaterUpdateDownloaded(AppcastItem? item) {
-    _status = UpdateStatus.downloaded;
-    _message = 'Обновление загружено, установка начнётся сейчас';
-    notifyListeners();
-  }
-
-  @override
-  void onUpdaterBeforeQuitForUpdate(AppcastItem? item) {
-    _status = UpdateStatus.downloaded;
-    _message = 'Закрываемся для установки обновления';
-    notifyListeners();
-  }
-
-  @override
-  void onUpdaterError(UpdaterError? error) {
-    _status = UpdateStatus.failed;
-    // Самая частая причина — канал недоступен: нет сети, приватный
-    // репозиторий, станция выключена. Пишем адрес, чтобы было видно, куда
-    // именно не достучались.
-    _message = '${error?.message ?? 'Ошибка проверки обновлений'}\n$effectiveFeedUrl';
     notifyListeners();
   }
 
   @override
   void dispose() {
     stopWatching();
-    autoUpdater.removeListener(this);
+    _client?.close();
     super.dispose();
   }
+}
+
+class _UpdateException implements Exception {
+  const _UpdateException(this.message);
+  final String message;
+}
+
+class _Digests {
+  const _Digests(this.sha1, this.sha256);
+  final Digest sha1;
+  final Digest sha256;
+}
+
+class _DigestSink implements Sink<Digest> {
+  Digest? value;
+
+  @override
+  void add(Digest data) => value = data;
+
+  @override
+  void close() {}
 }

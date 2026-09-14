@@ -1,7 +1,7 @@
 ; Установщик Nexus Nimbus (Windows).
 ;
 ; Упаковывает release-сборку Flutter в один NexusNimbus-Setup-X.Y.Z.exe,
-; который WinSparkle умеет запустить тихо и обновить программу на месте.
+; который приложение при обновлении запускает тихо, и он ставится на место.
 ;
 ; Вид мастера — стандартный для Inno Setup. Своя тут только иконка:
 ; попытка перекрасить мастер в палитру приложения обходится дорого
@@ -90,6 +90,13 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+[InstallDelete]
+; Inno удаляет только то, что ставил сам, а библиотеки прежних версий
+; остаются лежать рядом. Ничего их не грузит, но и держать незачем.
+Type: files; Name: "{app}\WinSparkle.dll"
+Type: files; Name: "{app}\auto_updater_windows_plugin.dll"
+Type: files; Name: "{app}\desktop_drop_plugin.dll"
+
 [Files]
 ; Вся release-сборка Flutter: exe, движок, data\ и DLL плагинов.
 ; Отладочные символы в установщик не кладём — это несколько десятков МБ,
@@ -107,8 +114,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; \
   Flags: nowait postinstall skipifsilent
 ; Тихое обновление: поднять новую версию само (/RELAUNCH=1), чтобы выглядело
-; как обычный перезапуск.
-Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: ShouldRelaunch
+; как обычный перезапуск. runasoriginaluser — иначе после установки «для всех»
+; (она идёт с правами администратора) программа поднялась бы с теми же
+; правами, а перетаскивание из Проводника в окно с правами не работает.
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser; Check: ShouldRelaunch
 
 [Code]
 { Тихое обновление запускает установщик с /RELAUNCH=1 и выходит; после

@@ -680,6 +680,25 @@ void main() {
       // Черновик выпуска в канале ещё не на что скачивать.
       expect(releases.any((r) => r.version == '0.3.0'), isFalse);
     });
+
+    test('подпись, сумма и ключи установки читаются без учёта префикса', () {
+      // Атрибуты идут с разными префиксами — sparkle:, nimbus: — а нужны
+      // по имени: по ним решается, запускать ли скачанный файл.
+      final latest = releases.first;
+      expect(latest.signature, 'MDwCHAo+PrF4Ee0v');
+      expect(latest.sha256, 'abc123');
+      expect(latest.installerArguments,
+          ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/RELAUNCH=1']);
+    });
+
+    test('без подписи и ключей запись всё равно читается', () {
+      // Старые записи их не имели; в списке версий они нужны, а запустить
+      // такой установщик UpdaterService.install откажется сам.
+      final old = releases.last;
+      expect(old.signature, isNull);
+      expect(old.sha256, isNull);
+      expect(old.installerArguments, isEmpty);
+    });
   });
 
   group('сравнение версий', () {
@@ -887,7 +906,8 @@ const _versionsXml = '''<?xml version="1.0"?>
 /// Канал обновлений: две выпущенные версии и черновик без установщика.
 const _appcastXml = '''<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0"
-     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:nimbus="https://github.com/kekw2077/nexus-nimbus">
   <channel>
     <title>Nexus Nimbus</title>
     <item>
@@ -924,7 +944,10 @@ const _appcastXml = '''<?xml version="1.0" encoding="utf-8"?>
         sparkle:version="0.2.0"
         sparkle:os="windows"
         length="24000000"
-        type="application/octet-stream" />
+        type="application/octet-stream"
+        sparkle:installerArguments="/VERYSILENT /SUPPRESSMSGBOXES  /NORESTART /SP- /RELAUNCH=1"
+        sparkle:dsaSignature="MDwCHAo+PrF4Ee0v"
+        nimbus:sha256="abc123" />
     </item>
   </channel>
 </rss>''';
